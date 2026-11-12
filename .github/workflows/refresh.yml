@@ -41,7 +41,7 @@ jobs:
           MODE: ${{ inputs.mode || 'auto' }}
         run: |
           if [ -z "$(node -p "require('./config.json').repo || ''")" ]; then
-            echo "::notice::This copy isn't set up yet, so nothing was fetched. Run 'Set up the dashboard' under Actions first (README, step 5)."
+            echo "::notice::This copy isn't set up yet, so nothing was fetched. Run 'Set up the dashboard' under Actions first (README, step 6)."
             exit 0
           fi
           if [ "$MODE" != "reclassify" ] && [ -z "$X_API_KEY" ]; then
