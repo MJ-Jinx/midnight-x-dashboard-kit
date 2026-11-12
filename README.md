@@ -289,7 +289,16 @@ Everything works the same, with one difference: all its files are public. The pa
 
 ## Getting updates
 
-Your copy doesn't update itself when this kit changes. To pick up improvements, copy the changed files from this kit into your **private copy**: `index.html`, `assets/`, `scripts/` and `.github/workflows/`. Keep your own `config.json`, `plan.json`, `builders.json`, `events.json`, `sources.json` and `data/`. The public site updates itself afterwards.
+Your copy doesn't change when this kit improves. To pick up a new version (about 5 minutes, all in the browser):
+
+1. On this kit's page, click **Code** → **Download ZIP**, and unzip it.
+2. In your **private copy**, click **Add file** → **Upload files**. From the unzipped folder, drag in `index.html` and the folders `assets`, `scripts` and `.github`.
+   - Upload nothing else. Your `config.json`, `plan.json`, `builders.json`, `events.json`, `sources.json` and `data` folder hold your own settings and numbers, and the kit's versions are empty.
+   - On a Mac, press **Cmd + Shift + .** in Finder to see the `.github` folder.
+3. Click **Commit changes**.
+4. Run **Set up the dashboard** again with the same answers as before, and choose **First fetch:** `none` so nothing is charged. This puts your name, address and focus area back into the page. Your data, targets, builders and events are kept.
+
+The public site updates itself a minute later. New sections start empty and fill in as you use them.
 
 ---
 
