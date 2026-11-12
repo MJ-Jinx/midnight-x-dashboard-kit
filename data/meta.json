@@ -1,0 +1,17 @@
+{
+ "demo": true,
+ "handle": "your_handle",
+ "user": {
+  "username": "your_handle",
+  "name": "Demo account"
+ },
+ "lastRun": {
+  "at": "2026-11-12T06:00:00.000Z",
+  "mode": "demo",
+  "postsRead": 0,
+  "mentionsRead": 0,
+  "usersRead": 0,
+  "estCostUSD": 0
+ },
+ "costByMonth": {}
+}

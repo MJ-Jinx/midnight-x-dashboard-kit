@@ -1,0 +1,56 @@
+name: Builder previews
+
+# After builders.json changes, take a picture of each builder's website for the banner on their card.
+# Uses only GITHUB_TOKEN (no X keys). Its own commit doesn't start it again.
+on:
+  push:
+    branches: [main]
+    paths: [builders.json]
+  workflow_dispatch:
+    inputs:
+      retake:
+        description: "Retake every picture, not only new or changed websites"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: builder-previews
+  cancel-in-progress: false
+
+jobs:
+  previews:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }} # the branch as it is now, so two quick adds in a row don't clash
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Take website pictures
+        env:
+          RETAKE: ${{ inputs.retake && '--force' || '' }}
+        run: node scripts/builder-previews.mjs $RETAKE
+
+      - name: Commit pictures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p assets/builders
+          git add -A assets/builders data/builder-previews.json
+          if git diff --cached --quiet; then
+            echo "No picture changes."
+          else
+            git commit -m "builders: website pictures for the cards"
+            for attempt in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && exit 0
+              sleep 5
+            done
+            exit 1
+          fi

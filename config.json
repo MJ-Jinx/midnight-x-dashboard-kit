@@ -1,0 +1,101 @@
+{
+  "_readme": "Public settings for the dashboard. Safe to commit: no secrets live here (your X keys go in GitHub Actions secrets). The \"Set up the dashboard\" workflow fills in repo, profile, timezone and local (your focus area). After editing keyword lists, run Refresh X data with mode reclassify (free).",
+  "handle": "",
+  "repo": "",
+  "profile": {
+    "role": "",
+    "area": "",
+    "framework": ""
+  },
+  "timezone": "UTC",
+  "timezoneLabel": "",
+  "refreshUtc": "04:15",
+  "fetch": {
+    "dailyWindowDays": 7,
+    "weeklyWindowDays": 29,
+    "mentions": true,
+    "mentionsWindowDays": 3,
+    "maxPostsPerRun": 1000,
+    "maxMentionsPerRun": 500,
+    "exclude": []
+  },
+  "midnight": {
+    "accounts": ["MidnightNtwrk", "midnightfdn"],
+    "domains": ["midnight.network", "github.com/midnightntwrk"],
+    "strong": [
+      "midnight network", "midnightnetwork", "midnight blockchain", "midnight chain",
+      "midnight.network", "$night", "night token", "cnight", "nightforce", "aliit",
+      "compact language", "compactc", "compact contract", "compact contracts",
+      "compact smart contract", "midnight.js", "midnight-js", "midnightntwrk", "glacier drop",
+      "scavenger mine", "zswap", "kachina", "rational privacy", "dust token"
+    ],
+    "medium": [
+      "zero-knowledge", "zero knowledge", "zk", "zkp", "zk proof", "selective disclosure",
+      "privacy-preserving", "data protection", "dust", "#night", "lace", "proof server", "1am",
+      "partner chain", "cardano partner chain"
+    ],
+    "timePhrases": [
+      "at midnight", "past midnight", "after midnight", "until midnight", "till midnight",
+      "before midnight", "since midnight", "by midnight", "around midnight", "to midnight",
+      "from midnight", "midnight snack", "midnight oil", "midnight sun", "midnight run"
+    ],
+    "overrides": {
+      "include": [],
+      "exclude": []
+    }
+  },
+  "series": [],
+  "local": {
+    "label": "",
+    "short": "",
+    "terms": []
+  },
+  "themes": [
+    {
+      "id": "build",
+      "label": "Build & dev",
+      "pillar": 3,
+      "terms": [
+        "compact", "contract", "contracts", "circuit", "deploy", "deployed", "sdk", "devnet",
+        "testnet", "preprod", "localnet", "github", "repo", "code", "dapp", "dapps", "proof server",
+        "zk proof", "hackathon", "bounty", "shipped", "shipping", "building", "builder", "builders",
+        "tutorial", "midnight-js", "midnight.js", "prototype", "demo"
+      ]
+    },
+    {
+      "id": "events",
+      "label": "Events & community",
+      "pillar": 2,
+      "terms": [
+        "meetup", "meetups", "event", "events", "space", "spaces", "ama", "livestream",
+        "live stream", "workshop", "workshops", "irl", "conference", "summit", "join us", "rsvp",
+        "luma", "tonight", "panel", "fireside", "community call"
+      ]
+    },
+    {
+      "id": "education",
+      "label": "Education & explainers",
+      "pillar": 2,
+      "terms": [
+        "privacy", "zero-knowledge", "zero knowledge", "zk", "explainer", "thread", "🧵", "learn",
+        "guide", "how to", "rational privacy", "selective disclosure", "data protection", "101",
+        "eli5"
+      ]
+    },
+    {
+      "id": "partnerships",
+      "label": "Partnerships",
+      "pillar": 1,
+      "terms": [
+        "partner", "partners", "partnership", "mou", "collaboration", "collab", "university", "bank",
+        "enterprise", "institution", "regulator", "fintech", "incubator", "accelerator"
+      ]
+    },
+    {
+      "id": "amplify",
+      "label": "Amplification",
+      "pillar": 2,
+      "terms": ["announce", "announced", "announcement", "news", "launch", "launched", "mainnet"]
+    }
+  ]
+}

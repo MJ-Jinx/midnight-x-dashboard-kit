@@ -1,0 +1,20 @@
+{
+  "_how": "People you have helped get started building. Add them with the dashboard's 'Add a builder' button: it commits this file for you (the first time, it asks for a GitHub key limited to this repository, kept only in your browser). You can also edit by hand: copy _example into the builders list and fill it in. This file is public, so only list people who are happy to be shown, with their public profile links. userX (their own X), projectX (their project's X) and github take a handle or username; linkedin, website and youtube take full https:// links; discord takes an invite link or a username. since is the date they started (YYYY-MM-DD). After each change, the 'Builder previews' workflow takes a picture of each website for the card's banner.",
+  "_example": {
+    "name": "Their name",
+    "since": "2026-11-12",
+    "stage": "Building",
+    "building": "What they are building",
+    "note": "How you helped them get started",
+    "links": {
+      "userX": "their_handle",
+      "projectX": "their_project",
+      "github": "their-username",
+      "linkedin": "",
+      "website": "https://example.com",
+      "discord": "",
+      "youtube": ""
+    }
+  },
+  "builders": []
+}

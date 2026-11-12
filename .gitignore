@@ -1,0 +1,13 @@
+# Never commit credentials or your raw X archive
+.env
+.env.*
+archive/
+twitter-*/
+*.zip
+node_modules/
+.DS_Store
+Thumbs.db
+
+# taste-skill working files
+.taste-skill/
+shots/

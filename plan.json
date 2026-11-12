@@ -1,0 +1,7 @@
+{
+  "_kit": true,
+  "_readme": "Targets and content calendar shown on the dashboard. This file is PUBLIC once pushed — keep partner names, contacts and anything confidential out of it. Targets use null when not set. Rates are fractions (0.03 = 3%).",
+  "quarters": {},
+  "years": {},
+  "calendar": []
+}

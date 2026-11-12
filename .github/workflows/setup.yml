@@ -1,0 +1,121 @@
+name: Set up the dashboard
+
+# Step 5 of the README. Personalises this copy, then (if your X keys are in place) starts the first fetch from X.
+# Safe to run again later, for example to change your focus area or time zone.
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: "Your role: shown under the title"
+        type: string
+        default: "Nightforce Leader"
+      focus_area:
+        description: "Focus area (optional): a region or topic to track, e.g. Nigeria, Lagos, DeFi, Education"
+        type: string
+        required: false
+      focus_terms:
+        description: "Focus words (optional): words that mark a post as about your focus area, comma-separated: cities, hashtags, flag emoji"
+        type: string
+        required: false
+      timezone:
+        description: "Time zone: e.g. Africa/Lagos, Europe/London, Asia/Singapore, America/New_York"
+        type: string
+        default: "UTC"
+      first_fetch:
+        description: "First fetch: read your posts from X now (needs the 4 X keys from step 4)"
+        type: choice
+        options:
+          - "backfill: whole timeline, about $3 of X credit, once"
+          - "daily: last 7 days only, about $0.15"
+          - "none: I'll run Refresh X data later"
+        default: "backfill: whole timeline, about $3 of X credit, once"
+
+permissions:
+  contents: write
+  actions: write
+  pages: read
+
+concurrency:
+  group: setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Personalise this copy
+        id: setup
+        env:
+          ROLE: ${{ inputs.role }}
+          FOCUS_AREA: ${{ inputs.focus_area }}
+          FOCUS_TERMS: ${{ inputs.focus_terms }}
+          TIMEZONE: ${{ inputs.timezone }}
+        run: node scripts/setup.mjs
+
+      - name: Test
+        run: node --test scripts/test.mjs
+
+      - name: Save the changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A config.json index.html plan.json data
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+          else
+            git commit -m "setup: personalise the dashboard"
+            for attempt in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && break
+              [ "$attempt" = 3 ] && exit 1
+              sleep 5
+            done
+          fi
+
+      - name: Start the first fetch from X
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_KEYS: ${{ secrets.X_API_KEY != '' && secrets.X_API_SECRET != '' && secrets.X_ACCESS_TOKEN != '' && secrets.X_ACCESS_TOKEN_SECRET != '' }}
+          CHOICE: ${{ inputs.first_fetch }}
+        run: |
+          mode="${CHOICE%%:*}"
+          if [ "$mode" = "none" ]; then
+            echo "note=Skipped, as asked. Run **Refresh X data** under Actions when you're ready." >> "$GITHUB_OUTPUT"
+          elif [ "$HAS_KEYS" != "true" ]; then
+            echo "::warning::Your X keys aren't all in place yet (README, step 4), so nothing was fetched."
+            echo "note=Not started: add your 4 X keys (README, step 4), then run **Refresh X data** with mode **$mode**." >> "$GITHUB_OUTPUT"
+          else
+            gh workflow run refresh.yml --ref "${GITHUB_REF_NAME}" -f mode="$mode"
+            echo "note=Started **Refresh X data** ($mode). It takes 1 to 5 minutes; your dashboard updates by itself afterwards." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.setup.outputs.url }}
+          NOTE: ${{ steps.fetch.outputs.note }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/pages" --silent 2>/dev/null; then
+            pages="GitHub Pages is on. The dashboard appears about a minute after this run."
+          else
+            pages="**GitHub Pages isn't on yet:** Settings → Pages → Source: *Deploy from a branch* → Branch: *main*, folder */ (root)* → Save (README, step 2)."
+            echo "::warning::GitHub Pages isn't on yet. Settings → Pages → Deploy from a branch → main, / (root)."
+          fi
+          {
+            echo "## Your dashboard is set up"
+            echo
+            echo "**Address:** $URL"
+            echo
+            echo "- $pages"
+            echo "- First fetch from X: $NOTE"
+            echo "- After that it refreshes by itself every day at 04:15 UTC."
+            echo
+            echo "Next (optional): set your targets in **plan.json**, and see *After setup* in the README."
+          } >> "$GITHUB_STEP_SUMMARY"

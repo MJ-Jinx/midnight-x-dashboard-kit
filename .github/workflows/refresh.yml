@@ -1,0 +1,68 @@
+name: Refresh X data
+
+on:
+  schedule:
+    - cron: "15 4 * * *" # 04:15 UTC daily (on Sundays it covers the last 29 days)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "daily = last 7 days · weekly = last 29 days + link/profile clicks · backfill = whole reachable timeline (~3,200 posts, ≈$3.30 once) · reclassify = re-apply config.json keywords (free) · verify-archive = look up queued archive posts, drop deleted ones ($0.005 per post still on X)"
+        type: choice
+        options: [auto, daily, weekly, backfill, reclassify, verify-archive]
+        default: auto
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-x-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Test
+        run: node --test scripts/test.mjs
+
+      - name: Fetch from X API
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          MODE: ${{ inputs.mode || 'auto' }}
+        run: |
+          if [ -z "$(node -p "require('./config.json').repo || ''")" ]; then
+            echo "::notice::This copy isn't set up yet, so nothing was fetched. Run 'Set up the dashboard' under Actions first (README, step 5)."
+            exit 0
+          fi
+          if [ "$MODE" != "reclassify" ] && [ -z "$X_API_KEY" ]; then
+            echo "::notice::X API secrets are not set yet, so nothing was fetched. See README, step 4: add your X keys."
+            exit 0
+          fi
+          if [ "$MODE" = "auto" ]; then node scripts/fetch-x.mjs; else node scripts/fetch-x.mjs --mode="$MODE"; fi
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "data: refresh X metrics ($(date -u +%Y-%m-%d))"
+            # pick up anything committed meanwhile (a builders.json edit, a plan.json change) before pushing
+            for attempt in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && exit 0
+              sleep 5
+            done
+            exit 1
+          fi
