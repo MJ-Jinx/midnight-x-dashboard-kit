@@ -7,6 +7,7 @@ Your own self-updating KPI dashboard for Midnight-related posts on X, hosted fre
 - **Trends, top posts, posting days, content mix and series**, with a searchable list of all your posts.
 - **Builders:** showcase people you have helped get started, with their links and a picture of their website.
 - **Events held:** record your meetups, workshops and talks. The dashboard adds up attendance, turnout, newcomers and cities.
+- **Articles and code:** connect your GitHub, dev.to, Medium and Substack names, and your Midnight articles, pull requests and projects show up next to your X numbers.
 - **Plan and report:** quarterly targets, a content calendar and a summary you can copy into a report.
 - **Private by default:** visitors get a view-only page. Your targets, link clicks, X API spend and event costs stay in a private repository that only you can open.
 
@@ -123,7 +124,7 @@ If something isn't right, for example a misspelt site name or a key that can't u
 
 Open your dashboard and click **Owner sign-in** at the bottom of the page. Follow the three steps in the box. It takes about 2 minutes and makes a second GitHub key, this time for your **private copy**. The key is kept only in your browser.
 
-Once you're signed in, you see your targets, link clicks, X API spend and event costs, and the **Add a builder** and **Add an event** buttons.
+Once you're signed in, you see your targets, link clicks, X API spend and event costs, and the **Add a builder**, **Add an event** and **Connected accounts** buttons.
 
 Why two keys? The publishing key from step 5 lives in GitHub and can only update the site. The owner key lives in your browser and can only open your private copy.
 
@@ -139,6 +140,7 @@ Why two keys? The publishing key from step 5 lives in GitHub and can only update
 - `null` means no target.
 - Rates are fractions: `0.03` means 3%.
 - `eventsHeld` and `eventAttendees` are the event targets: the number of events and the number of people at them.
+- `articles` and `pullRequests` are the targets for Articles and code.
 - Add a quarter by copying one, for example `"2027-Q1": { "label": "Q1 2027", "targets": { … } }`.
 - `focus` is a list of short lines shown in the report.
 - `calendar` entries look like `{ "date": "2027-01-15", "title": "…", "type": "post", "pillar": 2, "status": "idea" }`.
@@ -151,6 +153,19 @@ Why two keys? The publishing key from step 5 lives in GitHub and can only update
 - Leave out any number you don't know. To add the attendance after the event, click the event, then **Edit**.
 
 The section adds up events held, people at events, turnout (attended ÷ registered), the share new to Midnight, developers and cities. For you it also shows cost per attendee and the average feedback score. Events also appear in **Plan & report** and in the copied summary, without costs, scores or notes.
+
+**Articles and code.** Click **Connected accounts** in the Articles and code section and type your name on each site you use. No passwords: the dashboard reads only what is public, keeps what is about Midnight (the same keyword lists as your X posts), and checks again every day at 04:30 UTC. Your first results appear a minute or two after you save.
+
+| Site | What shows up |
+|---|---|
+| **GitHub** | Your pull requests and issues in Midnight repositories (`midnightntwrk` and `LFDT-Minokawa`, set under `githubOrgs` in `sources.json`), and your own public repositories about Midnight, with their stars. Private repositories are never listed. |
+| **dev.to** | All your articles about Midnight, with reactions and comments. |
+| **Medium** | Your latest posts about Midnight. Medium's public feed lists only your last 10 posts, so the history starts on the day you connect. Medium shares no claps or views. |
+| **Substack** | Your latest posts about Midnight, from your publication's name (`name`, `name.substack.com` or your own domain). The feed lists your last 20 posts, and Substack shares no likes or opens. |
+
+- **dev.to page views (optional):** on dev.to, open **Settings** → **Extensions** and generate a key under *DEV Community API Keys* at the bottom. Save it in your private copy as a secret named `DEVTO_API_KEY` (as in step 4). Page views then show to you only.
+- **Something that isn't about Midnight showed up?** Signed in, a weak match is marked **Needs review**. To leave an item out, add its ID (hover over the mark to see it) to `midnight.overrides.exclude` in `config.json`.
+- **Targets:** `articles` and `pullRequests` in `plan.json`.
 
 **On another browser or device,** use **Owner sign-in** again. **Sign out** at the bottom of the page removes the key from that browser.
 
@@ -196,7 +211,7 @@ From the [X API pricing page](https://docs.x.com/x-api/getting-started/pricing) 
 
 Each run records what it cost, and the page footer shows you this month's estimated total.
 
-GitHub is free for this. Private repositories get 2,000 free Actions minutes a month, and the dashboard uses about 60 to 100 of them (GitHub counts each run as at least one minute). Pages is free for the public site.
+GitHub is free for this. Private repositories get 2,000 free Actions minutes a month, and the dashboard uses about 100 to 150 of them (GitHub counts each run as at least one minute). Reading GitHub, dev.to, Medium and Substack costs nothing. Pages is free for the public site.
 
 ---
 
@@ -206,13 +221,15 @@ GitHub is free for this. Private repositories get 2,000 free Actions minutes a m
 - the page itself, `config.json` (keyword lists, your role, focus area and repository names) and `builders.json`;
 - the full text and public numbers (impressions, likes, replies, reposts, quotes, bookmarks) of your Midnight-related posts. Other posts are reduced to their ID, date and type, which are used for share of voice;
 - daily follower counts and daily mention counts. Nobody else's posts are republished;
-- your events, without their cost, feedback score, partners and notes.
+- your events, without their cost, feedback score, partners and notes;
+- your connected account names, and the Midnight articles, pull requests, issues and repositories found on them (titles, links, a short summary, and public numbers such as reactions and stars).
 
 **Only in your private copy:**
 - `plan.json` (targets, focus notes, content calendar);
 - link clicks and profile clicks;
 - X API spend and run details;
 - event costs, feedback scores, partners and notes;
+- dev.to page views, and notes on sites that didn't answer;
 - the scripts and workflows.
 
 These files are never copied to the site, so visitors can't see or download them.
@@ -220,7 +237,7 @@ These files are never copied to the site, so visitors can't see or download them
 Also keep in mind:
 - **Keep partner names, contacts and anything confidential** out of `config.json`, `builders.json` and the public event fields. Put them in an event's *Co-hosts or partners* and *Notes* instead.
 - **Posts you delete on X** drop out of the data on the next refresh that covers their date: 7 days back daily, 29 days back on Sundays. Older versions of the files still hold them in each repository's history.
-- **Your keys:** the X keys and the publishing key live only in your private copy's encrypted secrets. Your owner key lives only in your browser. None of them is ever written into a file.
+- **Your keys:** the X keys, the publishing key and the optional dev.to key live only in your private copy's encrypted secrets. Your owner key lives only in your browser. None of them is ever written into a file.
 - **Collaborators:** anyone you add to your private copy can see everything in it.
 - **Builders:** only list people who are happy to be shown publicly.
 
@@ -264,13 +281,15 @@ Everything works the same, with one difference: all its files are public. The pa
 | The banner says the data is **days old** | Open **Actions** in your private copy and read the failed run. GitHub pauses scheduled jobs in repositories with no activity for 60 days, but the daily data commits count as activity. |
 | **Owner sign-in** says the key can't change the repository | Make a new key with **Only select repositories** → your **private copy**, and **Contents: Read and write**. |
 | No **Add a builder**, **Add an event** or **Plan & report** | You're seeing the visitors' view. Use **Owner sign-in** at the bottom of the page. |
+| Articles and code says a site **didn't answer** | The site was busy or blocked the daily check, so the last numbers were kept. It tries again the next day. If it keeps happening, open **Actions** → **Refresh articles and code** in your private copy and read the run. |
+| An article or pull request is missing | Only items about Midnight are kept: check that its title, tags or text mention Midnight (or a Midnight term like Compact). Medium and Substack only show posts from after you connected. GitHub counts pull requests only in the organisations under `githubOrgs` in `sources.json`. |
 | A new builder or event isn't on the public site yet | The site updates a minute or two after each change. Reload then. If it still isn't there, check **Actions** → **Publish the public site** in your private copy. |
 
 ---
 
 ## Getting updates
 
-Your copy doesn't update itself when this kit changes. To pick up improvements, copy the changed files from this kit into your **private copy**: `index.html`, `assets/`, `scripts/` and `.github/workflows/`. Keep your own `config.json`, `plan.json`, `builders.json`, `events.json` and `data/`. The public site updates itself afterwards.
+Your copy doesn't update itself when this kit changes. To pick up improvements, copy the changed files from this kit into your **private copy**: `index.html`, `assets/`, `scripts/` and `.github/workflows/`. Keep your own `config.json`, `plan.json`, `builders.json`, `events.json`, `sources.json` and `data/`. The public site updates itself afterwards.
 
 ---
 

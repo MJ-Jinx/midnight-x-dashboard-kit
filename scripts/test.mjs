@@ -10,7 +10,8 @@ import { compileConfig, classify } from './lib/classify.mjs';
 import { normalizeApiPost, mergePosts, detectKind, ROOT } from './lib/posts.mjs';
 import { run } from './fetch-x.mjs';
 import { parseYtd, normalizeArchiveTweet, queueArchive, noteTextIndex } from './import-archive.mjs';
-import { publicPosts, publicMeta, publicEvents, build, leaks, checkToken } from './publish.mjs';
+import { publicPosts, publicMeta, publicEvents, publicContent, build, leaks, checkToken } from './publish.mjs';
+import { normalise, parseRss, feedItems, mergeFeed, devtoItems, githubItems } from './fetch-sources.mjs';
 
 // The real keyword lists, plus a fixed focus area and fixed series, so the tests pass whatever this copy's config.json sets.
 const base = JSON.parse(await fs.readFile(path.join(ROOT, 'config.json'), 'utf8'));
@@ -306,4 +307,84 @@ test('publishing key check: asks git\'s push question and says what to fix', asy
   assert.match(await checkToken('me/site', 'tok', answer(403)), /can't update me\/site.*Contents: Read and write/);
   assert.match(await checkToken('me/site', 'tok', answer(404)), /can't find me\/site/);
   assert.match(await checkToken('me/site', 'tok', async () => { throw new Error('offline'); }), /Couldn't reach GitHub/);
+});
+
+test('articles and code: account names from names, @names and profile links', () => {
+  assert.equal(normalise.github('https://github.com/Some-User/repo'), 'Some-User');
+  assert.equal(normalise.github('@someone'), 'someone');
+  assert.equal(normalise.github('two words'), null);
+  assert.equal(normalise.devto('https://dev.to/ben/'), 'ben');
+  assert.equal(normalise.medium('https://medium.com/@midnightnetwork/some-post-123'), 'midnightnetwork');
+  assert.equal(normalise.medium('writer.medium.com'), 'writer');
+  assert.equal(normalise.medium('@writer'), 'writer');
+  assert.equal(normalise.substack('mynews'), 'https://mynews.substack.com');
+  assert.equal(normalise.substack('https://news.example.com/archive/'), 'https://news.example.com');
+  assert.equal(normalise.substack('not a site'), null);
+});
+
+test('articles and code: feed posts are kept only when they are about Midnight', () => {
+  const item = (title, guid, day, extra) => `<item><title>${title}</title><link>https://medium.com/@w/${guid}?source=rss-abc</link><guid isPermaLink="false">https://medium.com/p/${guid}</guid><pubDate>${day} Nov 2026 10:00:00 GMT</pubDate>${extra}</item>`;
+  const xml = '<rss><channel><title>x</title>'
+    + item('<![CDATA[Building on the Midnight Network &amp; Compact]]>', 'aaa111', 'Mon, 02', '<category><![CDATA[blockchain]]></category><content:encoded><![CDATA[<p>Hello</p>]]></content:encoded>')
+    + item('My week in CSS', 'bbb222', 'Tue, 03', '<content:encoded><![CDATA[<p>I shipped the fix at midnight.</p>]]></content:encoded>')
+    + item('Notes from the week', 'ccc333', 'Wed, 04', '<content:encoded><![CDATA[<p>I wrote my first Compact contract and ran the proof server.</p>]]></content:encoded>')
+    + item('Weekend reading', 'ddd444', 'Thu, 05', '<category>midnight</category>')
+    + '</channel></rss>';
+  const posts = parseRss(xml);
+  assert.equal(posts.length, 4);
+  assert.equal(posts[0].title, 'Building on the Midnight Network & Compact');
+  assert.deepEqual(posts[0].categories, ['blockchain']);
+  const items = feedItems('medium', 'w', posts, cc);
+  assert.deepEqual(items.map((i) => i.id), ['medium:aaa111', 'medium:ccc333', 'medium:ddd444'], 'the CSS post only said "at midnight" in its text');
+  assert.equal(items[0].url, 'https://medium.com/@w/aaa111', 'the feed tracking is cut off the link');
+  assert.ok(items.every((i) => !i.review), 'a clear term or a midnight tag needs no review');
+  const cx = compileConfig({ ...cfg, midnight: { ...cfg.midnight, overrides: { include: [], exclude: ['medium:aaa111'] } } });
+  assert.ok(!feedItems('medium', 'w', posts, cx).some((i) => i.id === 'medium:aaa111'), 'overrides.exclude leaves an item out');
+});
+
+test('articles and code: a deleted feed post drops out, an older one stays', () => {
+  const prev = [{ id: 'm:old', date: '2025-01-01T00:00:00Z' }, { id: 'm:gone', date: '2026-10-05T00:00:00Z' }, { id: 'm:kept', date: '2026-10-09T00:00:00Z' }];
+  const fresh = [{ id: 'm:kept', date: '2026-10-09T00:00:00Z' }, { id: 'm:new', date: '2026-11-01T00:00:00Z' }];
+  assert.deepEqual(mergeFeed(prev, fresh, Date.parse('2026-10-01T00:00:00Z')).map((i) => i.id), ['m:kept', 'm:new', 'm:old']);
+  assert.equal(mergeFeed(prev, [], null), prev, 'an empty feed changes nothing');
+});
+
+test('articles and code: dev.to views stay owner-only, GitHub lists public work only', () => {
+  const list = [
+    { id: 1, title: 'Shielded tokens on Midnight', url: 'https://dev.to/w/a', published_timestamp: '2026-11-01T00:00:00Z', tag_list: ['midnightnetwork', 'zk'], description: '', public_reactions_count: 12, comments_count: 3 },
+    { id: 2, title: 'CSS tricks', url: 'https://dev.to/w/b', published_timestamp: '2026-11-02T00:00:00Z', tag_list: ['css'], description: 'Grids', public_reactions_count: 99, comments_count: 9 },
+  ];
+  const dv = devtoItems('w', list, new Map([[1, 340]]), cc);
+  assert.equal(dv.length, 1);
+  assert.deepEqual(dv[0].metrics, { reactions: 12, comments: 3 });
+  assert.deepEqual(dv[0].private, { views: 340 });
+  const issues = [
+    { number: 7, title: 'Add an entry', html_url: 'https://github.com/midnightntwrk/x/pull/7', repository_url: 'https://api.github.com/repos/midnightntwrk/x', created_at: '2026-10-01T00:00:00Z', state: 'closed', comments: 2, pull_request: { merged_at: '2026-10-02T00:00:00Z' } },
+    { number: 9, title: 'Bug', html_url: 'https://github.com/midnightntwrk/x/issues/9', repository_url: 'https://api.github.com/repos/midnightntwrk/x', created_at: '2026-10-03T00:00:00Z', state: 'open', comments: 0 },
+  ];
+  const repos = [
+    { full_name: 'w/public-dapp', name: 'public-dapp', html_url: 'https://github.com/w/public-dapp', created_at: '2026-09-01T00:00:00Z', private: false, stargazers_count: 4, forks_count: 1, topics: ['midnight'] },
+    { full_name: 'w/secret', name: 'secret', html_url: 'https://github.com/w/secret', created_at: '2026-09-02T00:00:00Z', private: true },
+    { full_name: 'w/fork', name: 'fork', html_url: 'https://github.com/w/fork', created_at: '2026-09-03T00:00:00Z', private: false, fork: true },
+  ];
+  const g = githubItems('w', issues, repos);
+  assert.deepEqual(g.map((i) => `${i.kind}:${i.state || ''}`), ['pr:merged', 'issue:open', 'repo:']);
+  assert.ok(!g.some((i) => /secret|fork/.test(i.id)), 'private repositories and forks are never listed');
+});
+
+test('public copy: articles keep their public numbers, not page views or account notes', async () => {
+  const file = { updated: 'x', accounts: { devto: { user: 'w', profile: 'https://dev.to/w', checked: 'x', note: 'key note' }, medium: { user: 'm', error: 'Medium did not answer' } }, items: [{ id: 'devto:1', metrics: { reactions: 2 }, private: { views: 9 } }] };
+  const pub = publicContent(file);
+  assert.deepEqual(pub.accounts, { devto: { user: 'w', profile: 'https://dev.to/w', checked: 'x' }, medium: { user: 'm' } });
+  assert.deepEqual(pub.items, [{ id: 'devto:1', metrics: { reactions: 2 } }]);
+  const out = await fs.mkdtemp(path.join(os.tmpdir(), 'mx-content-'));
+  try {
+    await fs.mkdir(path.join(out, 'data'));
+    await fs.writeFile(path.join(out, 'data/content.json'), JSON.stringify(file));
+    assert.deepEqual(leaks(out), ['data/content.json still has owner-only parts']);
+    await fs.writeFile(path.join(out, 'data/content.json'), JSON.stringify(pub));
+    assert.deepEqual(leaks(out), []);
+  } finally {
+    await fs.rm(out, { recursive: true, force: true });
+  }
 });

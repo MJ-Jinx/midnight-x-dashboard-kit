@@ -4,8 +4,9 @@
 // The "Publish the public site" workflow pushes that folder to the public repository named in config.json
 // ("publicRepo"), which hosts the view-only site. These stay behind in this repository:
 //   plan.json (targets, focus notes, content calendar), each post's "private" block (link clicks, profile clicks,
-//   engagements), each event's "private" block (cost, feedback score, partners, notes), X API spend and run details
-//   in meta.json, the archive queue, scripts, workflows and the kit.
+//   engagements), each event's "private" block (cost, feedback score, partners, notes), each article's "private"
+//   block (dev.to page views) and the notes on accounts that didn't answer, X API spend and run details in meta.json,
+//   the archive queue, scripts, workflows and the kit.
 // The owner's browser reads those straight from this repository through the GitHub API (owner mode in app.js).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,14 +15,21 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // copied unchanged (a missing one is skipped); everything under assets/ is copied too
-export const PUBLIC_FILES = ['index.html', 'favicon.svg', 'share.jpg', '.nojekyll', 'config.json', 'builders.json', 'data/history.json', 'data/mentions.json', 'data/builder-previews.json'];
+export const PUBLIC_FILES = ['index.html', 'favicon.svg', 'share.jpg', '.nojekyll', 'config.json', 'builders.json', 'sources.json', 'data/history.json', 'data/mentions.json', 'data/builder-previews.json'];
 const PUBLIC_DIRS = ['assets'];
 // rebuilt without their owner-only parts
-const FILTERED = ['data/posts.json', 'data/meta.json', 'events.json'];
+const FILTERED = ['data/posts.json', 'data/meta.json', 'events.json', 'data/content.json'];
 
 const strip = (p) => { const { private: _owner, ...rest } = p; return rest; };
 export function publicPosts(file) {
   return { ...file, posts: (file.posts || []).map(strip), other: (file.other || []).map(strip) };
+}
+
+// data/content.json without the numbers a platform shows only to the author (dev.to page views) and without the
+// owner's notes on accounts that didn't answer
+export function publicContent(file) {
+  const accounts = Object.fromEntries(Object.entries(file.accounts || {}).map(([k, v]) => { const { error: _e, note: _n, ...rest } = v || {}; return [k, rest]; }));
+  return { ...file, accounts, items: (file.items || []).map(strip) };
 }
 
 // events.json without each event's cost, feedback score, partners and notes (and without the worked example)
@@ -69,6 +77,11 @@ export function leaks(dir) {
     const e = JSON.parse(fs.readFileSync(events, 'utf8'));
     if ('_example' in e || (e.events || []).some((x) => x && 'private' in x)) out.push('events.json still has private blocks');
   }
+  const content = path.join(dir, 'data/content.json');
+  if (fs.existsSync(content)) {
+    const c = JSON.parse(fs.readFileSync(content, 'utf8'));
+    if ((c.items || []).some((x) => x && 'private' in x) || Object.values(c.accounts || {}).some((a) => a && ('error' in a || 'note' in a))) out.push('data/content.json still has owner-only parts');
+  }
   const meta = path.join(dir, 'data/meta.json');
   if (fs.existsSync(meta)) {
     const extra = Object.keys(JSON.parse(fs.readFileSync(meta, 'utf8'))).filter((k) => !['demo', 'handle', 'user', 'lastRun'].includes(k));
@@ -106,6 +119,7 @@ export function build(out, root = ROOT) {
   fs.writeFileSync(path.join(out, 'data/posts.json'), json(publicPosts(read('data/posts.json'))));
   fs.writeFileSync(path.join(out, 'data/meta.json'), json(publicMeta(read('data/meta.json'))));
   if (fs.existsSync(path.join(root, 'events.json'))) fs.writeFileSync(path.join(out, 'events.json'), JSON.stringify(publicEvents(read('events.json')), null, 2) + '\n');
+  if (fs.existsSync(path.join(root, 'data/content.json'))) fs.writeFileSync(path.join(out, 'data/content.json'), json(publicContent(read('data/content.json'))));
   fs.writeFileSync(path.join(out, 'README.md'), README(read('config.json')));
   return leaks(out);
 }

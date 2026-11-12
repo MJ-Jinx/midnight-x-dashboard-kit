@@ -103,7 +103,7 @@ if (plan._kit) {
   const now = new Date();
   const y = now.getUTCFullYear();
   const q = Math.floor(now.getUTCMonth() / 3) + 1;
-  const none = { midnightPosts: null, impressions: null, engagementRate: null, followersNet: null, localShare: null, midnightMentions: null, eventsHeld: null, eventAttendees: null };
+  const none = { midnightPosts: null, impressions: null, engagementRate: null, followersNet: null, localShare: null, midnightMentions: null, eventsHeld: null, eventAttendees: null, articles: null, pullRequests: null };
   const next = {
     _readme: plan._readme,
     quarters: { [`${y}-Q${q}`]: { label: `Q${q} ${y}`, targets: { ...none }, focus: [] } },

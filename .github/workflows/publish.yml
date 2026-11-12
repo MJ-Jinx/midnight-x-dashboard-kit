@@ -5,13 +5,14 @@ name: Publish the public site
 # Needs one of these secrets, with write access to that public repository:
 #   PUBLISH_TOKEN  a fine-grained GitHub key (Contents: Read and write on the public repository), made in the browser
 #   PUBLISH_KEY    or the private half of an SSH deploy key with write access
-# Runs after every push here, and after each X refresh and builder-picture run (their own commits can't start it).
+# Runs after every push here, and after each X refresh, articles-and-code refresh and builder-picture run (their own
+# commits can't start it).
 # With no "publicRepo" set, this repository is the site itself and the workflow does nothing.
 on:
   push:
     branches: [main]
   workflow_run:
-    workflows: ["Refresh X data", "Builder previews"]
+    workflows: ["Refresh X data", "Builder previews", "Refresh articles and code"]
     types: [completed]
   workflow_dispatch:
 
