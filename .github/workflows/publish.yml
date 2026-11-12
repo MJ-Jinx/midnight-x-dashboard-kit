@@ -1,0 +1,81 @@
+name: Publish the public site
+
+# Copies the page and the public numbers (scripts/publish.mjs) into the public repository named in config.json
+# ("publicRepo"), which hosts the view-only site on GitHub Pages. Owner-only files never leave this repository.
+# Needs one of these secrets, with write access to that public repository:
+#   PUBLISH_TOKEN  a fine-grained GitHub key (Contents: Read and write on the public repository), made in the browser
+#   PUBLISH_KEY    or the private half of an SSH deploy key with write access
+# Runs after every push here, and after each X refresh and builder-picture run (their own commits can't start it).
+# With no "publicRepo" set, this repository is the site itself and the workflow does nothing.
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["Refresh X data", "Builder previews"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-public-site
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main # the newest commit, including the data a refresh has just saved
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Build the public copy
+        run: node scripts/publish.mjs --out=_public
+
+      - name: Push it to the public repository
+        env:
+          PUBLISH_KEY: ${{ secrets.PUBLISH_KEY }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          PUBLIC_REPO="$(node -p "require('./config.json').publicRepo || ''")"
+          if [ -z "$PUBLIC_REPO" ]; then
+            echo "::notice::No public site repository is set (config.json \"publicRepo\"), so there is nothing to publish. That's expected when this repository is the site itself."
+            exit 0
+          fi
+          AUTH=()
+          if [ -n "$PUBLISH_KEY" ]; then
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            printf '%s\n' "$PUBLISH_KEY" > ~/.ssh/publish_key && chmod 600 ~/.ssh/publish_key
+            # GitHub's own SSH host keys, from its API over HTTPS
+            curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > ~/.ssh/known_hosts
+            export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/publish_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+            REMOTE="git@github.com:${PUBLIC_REPO}.git"
+          else
+            node scripts/publish.mjs --check # stops here, with what to fix, if the key is missing, expired or can't write
+            basic="$(printf 'x-access-token:%s' "$PUBLISH_TOKEN" | base64 -w0)"
+            echo "::add-mask::$basic"
+            AUTH=(-c "http.https://github.com/.extraheader=AUTHORIZATION: basic $basic")
+            REMOTE="https://github.com/${PUBLIC_REPO}.git"
+          fi
+          git "${AUTH[@]}" clone --quiet --depth 1 "$REMOTE" _site
+          cd _site
+          git checkout -q -B main
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a ../_public/. .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The public site is already up to date."
+            exit 0
+          fi
+          git commit -q -m "Update the dashboard ($(date -u +%Y-%m-%d))"
+          git "${AUTH[@]}" push -q origin main
+          echo "Published to https://github.com/${PUBLIC_REPO}"

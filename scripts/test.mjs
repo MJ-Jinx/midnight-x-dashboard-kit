@@ -10,7 +10,7 @@ import { compileConfig, classify } from './lib/classify.mjs';
 import { normalizeApiPost, mergePosts, detectKind, ROOT } from './lib/posts.mjs';
 import { run } from './fetch-x.mjs';
 import { parseYtd, normalizeArchiveTweet, queueArchive, noteTextIndex } from './import-archive.mjs';
-import { publicPosts, publicMeta, build, leaks } from './publish.mjs';
+import { publicPosts, publicMeta, publicEvents, build, leaks, checkToken } from './publish.mjs';
 
 // The real keyword lists, plus a fixed focus area and fixed series, so the tests pass whatever this copy's config.json sets.
 const base = JSON.parse(await fs.readFile(path.join(ROOT, 'config.json'), 'utf8'));
@@ -277,9 +277,33 @@ test('public copy: drops targets, link clicks and spend, keeps what the page sho
     assert.deepEqual(build(out), []);
     for (const gone of ['plan.json', 'data/pending-archive.json', 'scripts', '.github', 'kit']) assert.equal(existsSync(path.join(out, gone)), false, gone);
     for (const kept of ['index.html', 'config.json', 'builders.json', 'data/posts.json', 'assets/app.js']) assert.ok(existsSync(path.join(out, kept)), kept);
+    if (existsSync(path.join(out, 'events.json'))) assert.ok(!('_example' in JSON.parse(await fs.readFile(path.join(out, 'events.json'), 'utf8'))), 'events.json example left behind');
     await fs.writeFile(path.join(out, 'plan.json'), '{}');
     assert.deepEqual(leaks(out), ['plan.json is not on the public list']);
+    // an event's cost, score, partners and notes never reach the public copy
+    await fs.rm(path.join(out, 'plan.json'));
+    await fs.writeFile(path.join(out, 'events.json'), JSON.stringify({ events: [{ name: 'x', date: '2026-01-01', private: { cost: 1 } }] }));
+    assert.deepEqual(leaks(out), ['events.json still has private blocks']);
   } finally {
     await fs.rm(out, { recursive: true, force: true });
   }
+});
+
+test('public copy: events keep what the page shows, minus the owner-only block and the example', () => {
+  const file = { _readme: 'r', _example: { name: 'e', private: { cost: 1 } }, events: [{ name: 'Meetup', date: '2026-11-20', attended: 28, private: { cost: 150, currency: 'USD', partners: 'p', notes: 'n', rating: 4.5 } }, { name: 'Space', date: '2026-11-01', format: 'Online' }] };
+  const pub = publicEvents(file);
+  assert.deepEqual(pub, { _readme: 'r', events: [{ name: 'Meetup', date: '2026-11-20', attended: 28 }, { name: 'Space', date: '2026-11-01', format: 'Online' }] });
+  assert.ok(file.events[0].private && file._example, 'the original is left alone');
+});
+
+test('publishing key check: asks git\'s push question and says what to fix', async () => {
+  const calls = [];
+  const answer = (status) => async (url, opts) => { calls.push([url, opts.headers.Authorization]); return { ok: status === 200, status }; };
+  assert.equal(await checkToken('me/site', 'tok', answer(200)), null);
+  assert.equal(calls[0][0], 'https://github.com/me/site.git/info/refs?service=git-receive-pack');
+  assert.equal(calls[0][1], 'Basic ' + Buffer.from('x-access-token:tok').toString('base64'));
+  assert.match(await checkToken('me/site', 'tok', answer(401)), /expired.*Only select repositories → site/);
+  assert.match(await checkToken('me/site', 'tok', answer(403)), /can't update me\/site.*Contents: Read and write/);
+  assert.match(await checkToken('me/site', 'tok', answer(404)), /can't find me\/site/);
+  assert.match(await checkToken('me/site', 'tok', async () => { throw new Error('offline'); }), /Couldn't reach GitHub/);
 });

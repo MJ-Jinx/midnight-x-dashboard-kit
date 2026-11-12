@@ -1,10 +1,15 @@
 name: Set up the dashboard
 
-# Step 5 of the README. Personalises this copy, then (if your X keys are in place) starts the first fetch from X.
+# Step 6 of the README. Personalises this copy, checks it can publish to your public site repository,
+# then (if your X keys are in place) starts the first fetch from X.
 # Safe to run again later, for example to change your focus area or time zone.
 on:
   workflow_dispatch:
     inputs:
+      public_repo:
+        description: "Public site repository: the name of the public repository from step 2, e.g. midnight-dashboard (leave empty only if this copy is itself public)"
+        type: string
+        required: false
       role:
         description: "Your role: shown under the title"
         type: string
@@ -53,6 +58,9 @@ jobs:
       - name: Personalise this copy
         id: setup
         env:
+          PUBLIC_REPO: ${{ inputs.public_repo }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          GH_TOKEN: ${{ github.token }}
           ROLE: ${{ inputs.role }}
           FOCUS_AREA: ${{ inputs.focus_area }}
           FOCUS_TERMS: ${{ inputs.focus_terms }}
@@ -78,6 +86,25 @@ jobs:
             done
           fi
 
+      - name: Check the publishing key
+        id: key
+        if: steps.setup.outputs.public_repo != ''
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          HAS_DEPLOY_KEY: ${{ secrets.PUBLISH_KEY != '' }}
+        run: |
+          if [ "$HAS_DEPLOY_KEY" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif out="$(node scripts/publish.mjs --check)"; then
+            echo "$out"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            msg="${out#::error::}"
+            echo "::error::$msg"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "note=Not published yet. $msg" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Start the first fetch from X
         id: fetch
         env:
@@ -96,26 +123,59 @@ jobs:
             echo "note=Started **Refresh X data** ($mode). It takes 1 to 5 minutes; your dashboard updates by itself afterwards." >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Publish the site now
+        if: steps.key.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --ref "${GITHUB_REF_NAME}"
+
       - name: Summary
         env:
           GH_TOKEN: ${{ github.token }}
           URL: ${{ steps.setup.outputs.url }}
+          PUBLIC_REPO: ${{ steps.setup.outputs.public_repo }}
+          KEY_OK: ${{ steps.key.outputs.ok }}
+          KEY_NOTE: ${{ steps.key.outputs.note }}
           NOTE: ${{ steps.fetch.outputs.note }}
         run: |
-          if gh api "repos/${GITHUB_REPOSITORY}/pages" --silent 2>/dev/null; then
-            pages="GitHub Pages is on. The dashboard appears about a minute after this run."
+          if [ -n "$PUBLIC_REPO" ]; then
+            if [ "$KEY_OK" = "true" ]; then
+              site="Publishing to **$PUBLIC_REPO** (public). This repository keeps your targets, link clicks and spend private."
+            else
+              site="**$KEY_NOTE**"
+            fi
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL")" = "200" ]; then
+              pages="GitHub Pages is on. The dashboard appears a minute or two after this run."
+            else
+              pages="If the address still shows 404 in a few minutes, turn on Pages in **$PUBLIC_REPO**: Settings → Pages → *Deploy from a branch* → *main*, */ (root)* → Save (README, step 2)."
+            fi
           else
-            pages="**GitHub Pages isn't on yet:** Settings → Pages → Source: *Deploy from a branch* → Branch: *main*, folder */ (root)* → Save (README, step 2)."
-            echo "::warning::GitHub Pages isn't on yet. Settings → Pages → Deploy from a branch → main, / (root)."
+            site="This repository is the site itself, so all its files are public."
+            if gh api "repos/${GITHUB_REPOSITORY}/pages" --silent 2>/dev/null; then
+              pages="GitHub Pages is on. The dashboard appears about a minute after this run."
+            else
+              pages="**GitHub Pages isn't on yet:** Settings → Pages → Source: *Deploy from a branch* → Branch: *main*, folder */ (root)* → Save."
+              echo "::warning::GitHub Pages isn't on yet. Settings → Pages → Deploy from a branch → main, / (root)."
+            fi
           fi
           {
             echo "## Your dashboard is set up"
             echo
             echo "**Address:** $URL"
             echo
+            echo "- $site"
             echo "- $pages"
             echo "- First fetch from X: $NOTE"
             echo "- After that it refreshes by itself every day at 04:15 UTC."
             echo
-            echo "Next (optional): set your targets in **plan.json**, and see *After setup* in the README."
+            echo "**Next:** open the address and click **Owner sign-in** at the bottom of the page (README, step 7)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # the settings are saved and the fetch has started, but the site can't be updated: end on a red cross so it's noticed
+      - name: Stop if the site can't be updated
+        if: steps.key.outputs.ok == 'false'
+        env:
+          NOTE: ${{ steps.key.outputs.note }}
+        run: |
+          echo "$NOTE"
+          exit 1

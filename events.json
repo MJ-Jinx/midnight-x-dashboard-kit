@@ -1,0 +1,26 @@
+{
+  "_readme": "Events you ran or spoke at, shown in the Events held section. Add or edit them with Add an event on the page (after Owner sign-in), or edit this file. Dates are YYYY-MM-DD; leave out any number you don't know. Each event's \"private\" block (cost, currency, rating, partners, notes) shows only to the owner, and the public copy of the site leaves it out.",
+  "_example": {
+    "name": "Midnight builders meetup",
+    "date": "2026-11-20",
+    "type": "Meetup",
+    "format": "In person",
+    "venue": "Venue name",
+    "city": "City",
+    "country": "Country",
+    "registered": 40,
+    "attended": 28,
+    "newcomers": 12,
+    "developers": 9,
+    "summary": "One or two lines: the topic, what people built or learned.",
+    "link": "https://example.com/recap",
+    "private": {
+      "cost": 150,
+      "currency": "USD",
+      "rating": 4.6,
+      "partners": "Co-host names",
+      "notes": "Follow-ups"
+    }
+  },
+  "events": []
+}

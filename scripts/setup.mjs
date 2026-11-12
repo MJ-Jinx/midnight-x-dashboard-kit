@@ -4,6 +4,9 @@
 //   FOCUS_AREA   optional region or topic to track, e.g. "Nigeria", "Lagos", "DeFi"
 //   FOCUS_TERMS  optional words that mark a post as about the focus area, comma-separated
 //   TIMEZONE     IANA time zone for days and refresh times, e.g. "Africa/Lagos"
+//   PUBLIC_REPO  the public repository that hosts the site, when this copy is private (name, owner/name or URL)
+//   REPO_PRIVATE "true" when this copy is private (set by the workflow)
+//   GH_TOKEN     optional, used to look the public repository up on GitHub
 //   GITHUB_REPOSITORY  owner/repo (set by GitHub Actions)
 // Writes config.json, index.html (link-preview tags and first-paint labels), plan.json (first run only) and,
 // while the copy still shows demo data, fresh demo data. Real data is only re-tagged (free, offline).
@@ -33,7 +36,30 @@ if (area) { add(area); add('#' + area.replace(/\s+/g, '')); }
 env('FOCUS_TERMS').split(/[,\n]/).forEach(add);
 if (!area && terms.length) fail('You listed focus words but no focus area name. Fill in "Focus area" too, or leave both empty.');
 
-const pagesUrl = name.toLowerCase() === `${owner.toLowerCase()}.github.io` ? `https://${owner.toLowerCase()}.github.io/` : `https://${owner.toLowerCase()}.github.io/${name}/`;
+// the public site repository: this copy is private, so the page and public numbers are published there
+const isPrivate = env('REPO_PRIVATE') === 'true';
+let publicRepo = env('PUBLIC_REPO').replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+const typedSite = publicRepo.match(/^(?:https?:\/\/)?([\w-]+)\.github\.io\/([\w.-]+)/i); // the site address works too
+if (typedSite) publicRepo = `${typedSite[1]}/${typedSite[2]}`;
+if (publicRepo && !publicRepo.includes('/')) publicRepo = `${owner}/${publicRepo}`;
+if (publicRepo && !/^[\w.-]+\/[\w.-]+$/.test(publicRepo)) fail(`"${env('PUBLIC_REPO')}" doesn't look like a repository name. Type just its name, for example midnight-dashboard.`);
+if (publicRepo.toLowerCase() === repo.toLowerCase()) fail('"Public site repository" names this repository. Type the name of the separate public repository from step 2.');
+if (isPrivate && !publicRepo) fail('This copy is private, so the site needs its own public repository. Create it (README, step 2) and type its name in "Public site repository".');
+if (publicRepo) {
+  let r = null;
+  try {
+    r = await fetch(`https://api.github.com/repos/${publicRepo}`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'dashboard-setup', ...(env('GH_TOKEN') ? { Authorization: `Bearer ${env('GH_TOKEN')}` } : {}) },
+    });
+  } catch { /* checked below */ }
+  if (r?.status === 404) fail(`Can't find a public repository called ${publicRepo}. Create it as Public (README, step 2), or check the spelling.`);
+  const found = r?.ok ? await r.json() : null;
+  if (found?.private) fail(`${publicRepo} is private. The site repository must be Public (its Settings → General → Change visibility).`);
+  if (found?.full_name) publicRepo = found.full_name; // GitHub's own spelling
+  if (!r?.ok) console.log(`::warning::Couldn't look ${publicRepo} up on GitHub, so it wasn't checked.`);
+}
+const [siteOwner, siteName] = (publicRepo || repo).split('/');
+const pagesUrl = siteName.toLowerCase() === `${siteOwner.toLowerCase()}.github.io` ? `https://${siteOwner.toLowerCase()}.github.io/` : `https://${siteOwner.toLowerCase()}.github.io/${siteName}/`;
 const zoneLabel = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, timeZoneName: 'short' }).formatToParts(new Date()).find((x) => x.type === 'timeZoneName')?.value || timezone;
 
 /* ---------- config.json: edit only the fields setup owns, keep the rest (keywords, series, themes) as they are ---------- */
@@ -45,7 +71,14 @@ cfg.profile = { ...(cfg.profile || {}), role, area };
 cfg.timezone = timezone;
 cfg.timezoneLabel = '';
 cfg.local = { ...(cfg.local || {}), label: area, short: area, terms };
-fs.writeFileSync(file('config.json'), formatJson(cfg));
+// "publicRepo" sits right after "repo"; left out when this copy is the site itself
+const ordered = {};
+for (const [k, v] of Object.entries(cfg)) {
+  if (k === 'publicRepo') continue;
+  ordered[k] = v;
+  if (k === 'repo' && publicRepo) ordered.publicRepo = publicRepo;
+}
+fs.writeFileSync(file('config.json'), formatJson(ordered));
 
 /* ---------- index.html: link-preview tags (crawlers don't run scripts) and the labels shown before the data loads ---------- */
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -70,7 +103,7 @@ if (plan._kit) {
   const now = new Date();
   const y = now.getUTCFullYear();
   const q = Math.floor(now.getUTCMonth() / 3) + 1;
-  const none = { midnightPosts: null, impressions: null, engagementRate: null, followersNet: null, localShare: null, midnightMentions: null };
+  const none = { midnightPosts: null, impressions: null, engagementRate: null, followersNet: null, localShare: null, midnightMentions: null, eventsHeld: null, eventAttendees: null };
   const next = {
     _readme: plan._readme,
     quarters: { [`${y}-Q${q}`]: { label: `Q${q} ${y}`, targets: { ...none }, focus: [] } },
@@ -90,8 +123,9 @@ if (meta.demo) {
 }
 
 console.log(`Set up ${repo}: ${[role, area].filter(Boolean).join(' · ') || '(no title line)'}; time zone ${timezone} (${zoneLabel}); focus area ${area ? `"${area}" with ${terms.length} words` : 'none'}.`);
+console.log(publicRepo ? `Site: published to ${publicRepo} (public); this copy keeps the private files.` : 'Site: this repository is the site, so all its files are public.');
 console.log(`Dashboard address: ${pagesUrl}`);
-if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `url=${pagesUrl}\n`);
+if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `url=${pagesUrl}\npublic_repo=${publicRepo}\n`);
 
 // JSON with short lists kept on one line, like the hand-written files
 function formatJson(value) {
