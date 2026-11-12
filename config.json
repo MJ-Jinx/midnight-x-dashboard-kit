@@ -1,5 +1,6 @@
 {
   "_readme": "Public settings for the dashboard. Safe to commit: no secrets live here (your X keys go in GitHub Actions secrets). The \"Set up the dashboard\" workflow fills in repo, profile, timezone and local (your focus area). After editing keyword lists, run Refresh X data with mode reclassify (free).",
+  "kitCopy": true,
   "handle": "",
   "repo": "",
   "profile": {

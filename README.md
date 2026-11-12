@@ -237,7 +237,7 @@ These files are never copied to the site, so visitors can't see or download them
 Also keep in mind:
 - **Keep partner names, contacts and anything confidential** out of `config.json`, `builders.json` and the public event fields. Put them in an event's *Co-hosts or partners* and *Notes* instead.
 - **Posts you delete on X** drop out of the data on the next refresh that covers their date: 7 days back daily, 29 days back on Sundays. Older versions of the files still hold them in each repository's history.
-- **Your keys:** the X keys, the publishing key and the optional dev.to key live only in your private copy's encrypted secrets. Your owner key lives only in your browser. None of them is ever written into a file.
+- **Your keys:** the X keys, the publishing key and the optional dev.to and update keys live only in your private copy's encrypted secrets. Your owner key lives only in your browser. None of them is ever written into a file.
 - **Collaborators:** anyone you add to your private copy can see everything in it.
 - **Builders:** only list people who are happy to be shown publicly.
 
@@ -283,13 +283,31 @@ Everything works the same, with one difference: all its files are public. The pa
 | No **Add a builder**, **Add an event** or **Plan & report** | You're seeing the visitors' view. Use **Owner sign-in** at the bottom of the page. |
 | Articles and code says a site **didn't answer** | The site was busy or blocked the daily check, so the last numbers were kept. It tries again the next day. If it keeps happening, open **Actions** → **Refresh articles and code** in your private copy and read the run. |
 | An article or pull request is missing | Only items about Midnight are kept: check that its title, tags or text mention Midnight (or a Midnight term like Compact). Medium and Substack only show posts from after you connected. GitHub counts pull requests only in the organisations under `githubOrgs` in `sources.json`. |
+| **Update from the kit** says the copy **"doesn't say which kit it came from"** | Your copy is older than the button. Update it by hand once ([Getting updates](#getting-updates)). |
+| **Update from the kit** lists **workflow files not updated** | Add the optional `UPDATE_TOKEN` secret and run it again, or upload the `.github` folder from the kit's ZIP by hand. |
 | A new builder or event isn't on the public site yet | The site updates a minute or two after each change. Reload then. If it still isn't there, check **Actions** → **Publish the public site** in your private copy. |
 
 ---
 
 ## Getting updates
 
-Your copy doesn't change when this kit improves. To pick up a new version (about 5 minutes, all in the browser):
+Your copy doesn't change by itself when this kit improves. When a new version is out, your dashboard shows a note at the top (only to you, signed in).
+
+**Update from the kit (one click).** In your private copy, open **Actions** → **Update from the kit** → **Run workflow**, then **Run workflow** again.
+- It downloads the latest kit and replaces only the code: the page, scripts, workflows and this guide.
+- Your settings, targets, builders, events, numbers and builder pictures are never touched, and your setup answers are put back for you.
+- To see what would change first, choose **check** instead of **update**. Each run's summary lists what's new in the kit.
+- It installs whatever this kit's repository contains, so run **check** and read *What's new* if you want to see a change before installing it.
+
+**Let it update the workflow files too (optional, once).** GitHub doesn't let a workflow change workflow files with its built-in key. Without this key, the run updates everything else and lists the workflow files to upload by hand.
+1. Open [this link to make a GitHub key](https://github.com/settings/personal-access-tokens/new?name=Dashboard+updates&description=Lets+Update+from+the+kit+change+the+workflow+files+in+my+private+copy.&expires_in=366&contents=write&workflows=write). Its name, expiry and permissions are filled in for you.
+2. Under **Repository access**, choose **Only select repositories** and pick your **private copy**.
+3. Check that **Permissions** shows **Contents** and **Workflows**, both **Read and write**. Click **Generate token** and copy the key.
+4. In your private copy: **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. **Name:** `UPDATE_TOKEN`. **Secret:** paste the key. Click **Add secret**.
+
+**Copies made before 12 November 2026** don't have the button yet. Update by hand once (below), then use the button from then on.
+
+**By hand** (about 5 minutes, all in the browser):
 
 1. On this kit's page, click **Code** → **Download ZIP**, and unzip it.
 2. In your **private copy**, click **Add file** → **Upload files**. From the unzipped folder, drag in `index.html` and the folders `assets`, `scripts` and `.github`.

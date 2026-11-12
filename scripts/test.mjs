@@ -12,6 +12,7 @@ import { run } from './fetch-x.mjs';
 import { parseYtd, normalizeArchiveTweet, queueArchive, noteTextIndex } from './import-archive.mjs';
 import { publicPosts, publicMeta, publicEvents, publicContent, build, leaks, checkToken } from './publish.mjs';
 import { normalise, parseRss, feedItems, mergeFeed, devtoItems, githubItems } from './fetch-sources.mjs';
+import { planUpdate, applyUpdate, setupEnv, isCode } from './update.mjs';
 
 // The real keyword lists, plus a fixed focus area and fixed series, so the tests pass whatever this copy's config.json sets.
 const base = JSON.parse(await fs.readFile(path.join(ROOT, 'config.json'), 'utf8'));
@@ -370,6 +371,72 @@ test('articles and code: dev.to views stay owner-only, GitHub lists public work 
   const g = githubItems('w', issues, repos);
   assert.deepEqual(g.map((i) => `${i.kind}:${i.state || ''}`), ['pr:merged', 'issue:open', 'repo:']);
   assert.ok(!g.some((i) => /secret|fork/.test(i.id)), 'private repositories and forks are never listed');
+});
+
+test('update from the kit: new code in, the owner\'s settings, numbers and pictures untouched', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'mx-update-'));
+  const put = async (dir, rel, text) => { await fs.mkdir(path.dirname(path.join(tmp, dir, rel)), { recursive: true }); await fs.writeFile(path.join(tmp, dir, rel), text); };
+  const get = (dir, rel) => fs.readFile(path.join(tmp, dir, rel), 'utf8');
+  const has = (dir, rel) => existsSync(path.join(tmp, dir, rel));
+  try {
+    // an owner's copy made from an older kit
+    await put('copy', 'config.json', JSON.stringify({ repo: 'me/dash-private', publicRepo: 'me/dash', profile: { role: 'Leader', area: 'Lagos' }, timezone: 'Africa/Lagos', local: { label: 'Lagos', terms: ['lagos', '#lagos', 'ikeja'] }, midnight: { strong: ['mine'] } }));
+    await put('copy', 'plan.json', '{"quarters":{"2026-Q4":{"targets":{"midnightPosts":40}}}}');
+    await put('copy', 'builders.json', '{"builders":[{"name":"Ada"}]}');
+    await put('copy', 'data/posts.json', '{"posts":["real"]}');
+    await put('copy', 'assets/builders/ada.jpg', 'picture');
+    await put('copy', 'assets/app.js', 'old app');
+    await put('copy', 'scripts/old-helper.mjs', 'dropped later');
+    await put('copy', 'scripts/mine.mjs', 'the owner\'s own script, never in a kit');
+    await put('copy', '.github/workflows/refresh.yml', 'old refresh');
+    await put('copy', 'share.jpg', 'my own preview');
+    await put('copy', 'kit.json', JSON.stringify({ repo: 'kit/repo', version: 'aaa1111', files: ['assets/app.js', 'scripts/old-helper.mjs', '.github/workflows/refresh.yml'] }));
+    // the latest kit
+    await put('kit', 'config.json', JSON.stringify({ repo: '', profile: { role: '' }, midnight: { strong: ['kit'] }, newSetting: { on: true } }));
+    await put('kit', 'plan.json', '{}');
+    await put('kit', 'builders.json', '{"builders":[]}');
+    await put('kit', 'events.json', '{"events":[]}');
+    await put('kit', 'sources.json', '{"github":""}');
+    await put('kit', 'data/posts.json', '{"posts":["demo"]}');
+    await put('kit', 'data/content.json', '{"items":[]}');
+    await put('kit', 'assets/app.js', 'new app');
+    await put('kit', 'scripts/update.mjs', 'updater');
+    await put('kit', '.github/workflows/refresh.yml', 'new refresh');
+    await put('kit', '.github/workflows/sources.yml', 'new workflow');
+    await put('kit', 'share.jpg', 'kit preview');
+    await put('kit', 'kit.json', JSON.stringify({ repo: 'kit/repo', version: null, files: [] }));
+
+    const plan = planUpdate(path.join(tmp, 'copy'), path.join(tmp, 'kit'));
+    assert.deepEqual(plan.replace.sort(), ['.github/workflows/refresh.yml', 'assets/app.js']);
+    assert.deepEqual(plan.add.sort(), ['.github/workflows/sources.yml', 'data/content.json', 'events.json', 'scripts/update.mjs', 'sources.json']);
+    assert.deepEqual(plan.remove, ['scripts/old-helper.mjs'], 'only code an earlier kit installed is removed');
+    assert.deepEqual(plan.config, ['newSetting']);
+    assert.equal(plan.oldVersion, 'aaa1111');
+
+    applyUpdate(path.join(tmp, 'copy'), path.join(tmp, 'kit'), plan, 'bbb2222');
+    assert.equal(await get('copy', 'assets/app.js'), 'new app');
+    assert.equal(await get('copy', '.github/workflows/sources.yml'), 'new workflow');
+    assert.ok(!has('copy', 'scripts/old-helper.mjs'));
+    assert.equal(await get('copy', 'scripts/mine.mjs'), 'the owner\'s own script, never in a kit');
+    assert.equal(await get('copy', 'plan.json'), '{"quarters":{"2026-Q4":{"targets":{"midnightPosts":40}}}}');
+    assert.equal(await get('copy', 'builders.json'), '{"builders":[{"name":"Ada"}]}');
+    assert.equal(await get('copy', 'data/posts.json'), '{"posts":["real"]}', 'never the demo data');
+    assert.equal(await get('copy', 'assets/builders/ada.jpg'), 'picture');
+    assert.equal(await get('copy', 'share.jpg'), 'my own preview');
+    const cfgAfter = JSON.parse(await get('copy', 'config.json'));
+    assert.deepEqual(cfgAfter.midnight, { strong: ['mine'] }, 'the owner\'s settings stay');
+    assert.equal(cfgAfter.repo, 'me/dash-private');
+    assert.deepEqual(cfgAfter.newSetting, { on: true }, 'a new setting is added');
+    const kit = JSON.parse(await get('copy', 'kit.json'));
+    assert.equal(kit.version, 'bbb2222');
+    assert.ok(kit.files.includes('.github/workflows/sources.yml') && !kit.files.includes('scripts/old-helper.mjs'));
+    assert.deepEqual(planUpdate(path.join(tmp, 'copy'), path.join(tmp, 'kit')).replace, [], 'a second run finds nothing to do');
+
+    assert.deepEqual(setupEnv(cfgAfter), { ROLE: 'Leader', FOCUS_AREA: 'Lagos', FOCUS_TERMS: 'lagos, #lagos, ikeja', TIMEZONE: 'Africa/Lagos', PUBLIC_REPO: 'me/dash' });
+    assert.ok(isCode('assets/app.js') && !isCode('assets/builders/ada.jpg') && !isCode('config.json') && !isCode('share.jpg'));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 test('public copy: articles keep their public numbers, not page views or account notes', async () => {

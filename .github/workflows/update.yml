@@ -1,0 +1,152 @@
+name: Update from the kit
+
+# Installs the latest version of the kit this copy came from (kit.json "repo"): new code in, your settings, targets,
+# builders, events, numbers and builder pictures untouched, your setup answers put back (scripts/update.mjs).
+# GitHub's built-in key may not change workflow files. To update those too, add the optional UPDATE_TOKEN secret:
+# a GitHub key for this repository with Contents and Workflows set to Read and write (README, Getting updates).
+# Without it, the workflow files are left as they are and the run lists the ones to upload by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "update: install the latest kit · check: only show what would change"
+        type: choice
+        options: [update, check]
+        default: update
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: update-from-kit
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          token: ${{ secrets.UPDATE_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Download the latest kit
+        id: kit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          KIT_REPO="$(node -p "(() => { try { return require('./kit.json').repo || '' } catch { return '' } })()")"
+          if ! printf '%s' "$KIT_REPO" | grep -Eq '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$'; then
+            echo "::error::This copy doesn't say which kit it came from (kit.json \"repo\"). Update it by hand once (README, Getting updates)."
+            exit 1
+          fi
+          SHA="$(gh api "repos/$KIT_REPO/commits/main" --jq .sha)"
+          mkdir -p "$RUNNER_TEMP/kit"
+          curl -fsSL "https://codeload.github.com/$KIT_REPO/tar.gz/$SHA" | tar -xz -C "$RUNNER_TEMP/kit" --strip-components=1
+          echo "repo=$KIT_REPO" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Install it
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          CHECK: ${{ inputs.mode == 'check' && '--check' || '' }}
+        run: node "$RUNNER_TEMP/kit/scripts/update.mjs" --kit="$RUNNER_TEMP/kit" --version="${{ steps.kit.outputs.sha }}" $CHECK
+
+      - name: Test
+        if: inputs.mode == 'update'
+        run: node --test scripts/test.mjs
+
+      - name: Save
+        id: save
+        if: inputs.mode == 'update'
+        env:
+          HAS_KEY: ${{ secrets.UPDATE_TOKEN != '' }}
+          SHA: ${{ steps.kit.outputs.sha }}
+        run: |
+          held=""
+          if [ "$HAS_KEY" != "true" ]; then
+            # leave the workflow files as they are, and list the ones with changes
+            held="$(git status --porcelain --untracked-files=all -- .github/workflows | cut -c4- | tr '\n' ' ')"
+            git checkout -- .github/workflows 2>/dev/null || true
+            git clean -fdq -- .github/workflows
+          fi
+          echo "held=$held" >> "$GITHUB_OUTPUT"
+          echo "key=$HAS_KEY" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -q -m "Update from the kit (${SHA:0:7})"
+          for attempt in 1 2 3; do
+            git pull -q --rebase origin main && git push -q && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep 5
+          done
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # a push with GitHub's built-in key doesn't start other workflows, so the public site is published here
+      # (a push with UPDATE_TOKEN starts "Publish the public site" by itself)
+      - name: Publish the site
+        if: steps.save.outputs.changed == 'true' && steps.save.outputs.key != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --ref main || echo "Couldn't start Publish the public site; it runs with the next refresh."
+
+      - name: Summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          KIT_REPO: ${{ steps.kit.outputs.repo }}
+          SHA: ${{ steps.kit.outputs.sha }}
+          OLD: ${{ steps.update.outputs.old_version }}
+          FILES: ${{ steps.update.outputs.files }}
+          WORKFLOWS: ${{ steps.update.outputs.workflows }}
+          NEW_SETTINGS: ${{ steps.update.outputs.settings }}
+          HELD: ${{ steps.save.outputs.held }}
+          CHANGED: ${{ steps.save.outputs.changed }}
+        run: |
+          [ -z "$SHA" ] && exit 0
+          news="$( { [ -n "$OLD" ] && [ "$OLD" != "$SHA" ] && gh api "repos/$KIT_REPO/compare/$OLD...$SHA" --jq '.commits[].commit.message | split("\n")[0]' 2>/dev/null; } || gh api "repos/$KIT_REPO/commits?per_page=5" --jq '.[].commit.message | split("\n")[0]' 2>/dev/null)" || news=""
+          {
+            if [ "$MODE" = "check" ] && [ "${FILES:-0}" = "0" ] && [ -z "$NEW_SETTINGS" ]; then
+              echo "## Already up to date"
+              echo
+              echo "This copy already matches kit version \`${SHA:0:7}\`. Nothing was changed."
+            elif [ "$MODE" = "check" ]; then
+              echo "## Check only: nothing was changed"
+              echo
+              echo "Installing kit version \`${SHA:0:7}\` would change **${FILES:-0} files**${WORKFLOWS:+, including the workflow files $WORKFLOWS}${NEW_SETTINGS:+, and add the settings $NEW_SETTINGS to config.json}. Run it again with **update** to install it."
+            elif [ "$CHANGED" = "true" ]; then
+              echo "## Updated to kit version \`${SHA:0:7}\`"
+              echo
+              echo "${FILES:-0} files changed. Your settings, targets, builders, events and numbers were kept, and your setup answers were put back. The public site updates in a minute or two."
+            else
+              echo "## Already up to date"
+              echo
+              echo "This copy already runs kit version \`${SHA:0:7}\`."
+            fi
+            if [ -n "$HELD" ]; then
+              echo
+              echo "**Workflow files not updated:** $HELD"
+              echo
+              echo "GitHub's built-in key may not change workflow files. Upload them by hand (Add file → Upload files → the \`.github\` folder from the kit's ZIP), or add the \`UPDATE_TOKEN\` secret and run this again (README, Getting updates)."
+            fi
+            if [ -n "$news" ]; then
+              echo
+              echo "### What's new in the kit"
+              echo
+              printf '%s\n' "$news" | sed 's/^/- /'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
