@@ -184,3 +184,5 @@ Your copy doesn't update itself when this kit changes. To pick up improvements, 
 ---
 
 Community tool, not an official Midnight Network or Midnight Foundation publication. Midnight and the Midnight logo are trademarks of their owners.
+
+Licensed under the MIT License (see [LICENSE](LICENSE)), except the Midnight logo and the few third-party files listed there.
