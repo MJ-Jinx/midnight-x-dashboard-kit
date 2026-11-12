@@ -14,6 +14,8 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 400; letter-spac
 p { text-wrap: pretty; }
 img, svg { display: block; max-width: 100%; }
 [hidden] { display: none !important; }
+/* view-only for visitors: owner-only parts show once app.js has confirmed the owner's GitHub key (html.is-owner) */
+html:not(.is-owner) [data-owner] { display: none !important; }
 a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--p-action); outline-offset: 2px; border-radius: 2px; }
@@ -244,6 +246,7 @@ html { scroll-padding-top: calc(var(--db-top) + 12px); scroll-behavior: smooth; 
 .app-open__text { font-size: 14.5px; line-height: 1.55; color: var(--p-ink); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 14px; }
 .app-open__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--u-line); border: 1px solid var(--u-line); border-radius: 10px; overflow: hidden; margin: 0 0 12px; }
 .app-open__stats > div { background: #fff; padding: 8px 10px; }
+.app-open__stats > div:last-child:nth-child(odd) { grid-column: span 2; } /* 7 stats for visitors (no link clicks): no empty cell */
 .app-open__stats dt { font-size: 11.5px; color: var(--u-muted); } .app-open__stats dd { margin: 1px 0 0; font: 600 15px/1.25 var(--font-text); font-variant-numeric: tabular-nums; }
 .app-open__why { font-size: 12.5px; color: var(--u-muted); margin: 0 0 10px; }
 .app-open__link { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 13.5px; color: var(--p-action); }
@@ -368,6 +371,7 @@ button.db-link { font-family: var(--font-text); cursor: pointer; }
 .db-foot { padding: 20px 0 36px; border-top: 1px solid var(--u-line); font-size: 12.5px; color: var(--u-muted); }
 .db-foot .db-wrap { display: grid; gap: 4px; }
 .db-foot a { color: var(--p-ink); text-decoration: underline; text-decoration-color: var(--u-line-2); text-underline-offset: 3px; }
+.db-foot__owner { margin-top: 6px; }
 
 /* ---------- smaller screens ---------- */
 @media (max-width: 1279px) {

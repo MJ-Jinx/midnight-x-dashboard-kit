@@ -7,6 +7,7 @@ Your own self-updating KPI dashboard for Midnight-related posts on X, hosted fre
 - **Trends, top posts, posting days, content mix and series**, with a searchable list of all your posts.
 - **Plan and report:** quarterly targets, a content calendar and a summary you can copy into a report.
 - **Builders:** showcase people you have helped get started, with their links and a picture of their website.
+- **View-only for visitors:** targets, the report, link clicks, spend and the edit buttons show only on your own browser, after a one-time owner sign-in.
 
 Setup takes about 20 minutes, all in your browser. You don't need to install anything.
 
@@ -101,10 +102,12 @@ The setup takes about a minute. Then the first fetch from X runs by itself and t
 - `focus` is a list of short lines shown in the report.
 - `calendar` entries look like `{ "date": "2027-01-15", "title": "…", "type": "post", "pillar": 2, "status": "idea" }`.
 
-**Builders.** Click **Add a builder** in the Builders section. The first time, the form asks for a GitHub key:
-- follow the three steps in the form; it takes about 2 minutes;
-- the key can change files in this one repository only, and it's kept only in your browser;
-- after that, each builder is added with one click, and a picture of their website appears on their card a minute or two later.
+**Owner sign-in.** Visitors get a view-only page: no targets, no Plan & report, no link clicks, no X API spend, and no buttons that change anything. To see all of it on your own browser, click **Owner sign-in** at the bottom of the page, once:
+- follow the three steps in the box; it takes about 2 minutes;
+- the key opens this one repository only, and it's kept only in your browser;
+- **Sign out** at the bottom of the page removes it from that browser.
+
+**Builders.** Once you're signed in, click **Add a builder** in the Builders section. Each builder is added with one click, and a picture of their website appears on their card a minute or two later.
 
 **What counts as Midnight-related.** This is decided by the keyword lists in `config.json` (under `midnight`).
 - After editing them, go to **Actions** → **Refresh X data** → **Run workflow**, and choose mode **reclassify**. It's free and re-tags every stored post.
@@ -153,9 +156,10 @@ Each run records what it cost. The page footer shows this month's estimated tota
 ## Privacy and safety
 
 - **Everything in the repository is public:** the page, `config.json`, `plan.json`, `builders.json` and the data. Keep partner names, contacts and anything confidential out of these files.
+- **View-only is a view, not a lock.** Visitors don't see your targets, link clicks or spend on the page, but anyone can still open those files in your public repository.
 - The data stores the **full text of your Midnight-related posts** only. Other posts are reduced to ID, date and type (used for share of voice). Mentions are stored as daily counts. Nobody else's posts are republished.
 - Posts you delete on X drop out of the data on the next refresh that covers their date (7 days back daily, 29 days back on Sundays). Older versions of the files still hold them in the repository's history.
-- **Your X keys** live only in GitHub's encrypted secrets. **Your builders key** lives only in your browser. Neither is ever written into a file.
+- **Your X keys** live only in GitHub's encrypted secrets. **Your owner key** lives only in your browser. Neither is ever written into a file.
 - Only list builders who are happy to be shown publicly.
 
 ---
@@ -173,7 +177,8 @@ Each run records what it cost. The page footer shows this month's estimated tota
 | X error **403** | The app isn't inside a Project, or lacks Read permission. |
 | **"Permission denied to github-actions[bot]"** | **Settings** → **Actions** → **General** → *Workflow permissions* → **Read and write permissions** → **Save**. Then run it again. |
 | The banner says the data is **days old** | Open **Actions** and read the failed run. GitHub pauses scheduled jobs in repositories with no activity for 60 days, but the daily data commits count as activity. |
-| **Add a builder** says the key can't change files | Make a new key with **Only select repositories** → this repository, and **Contents: Read and write**. |
+| **Owner sign-in** says the key can't change the repository | Make a new key with **Only select repositories** → this repository, and **Contents: Read and write**. |
+| No **Add a builder** or **Plan & report** | You're seeing the visitors' view. Use **Owner sign-in** at the bottom of the page. |
 
 ---
 

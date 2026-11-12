@@ -1,5 +1,7 @@
 /* Midnight on X: the KPI dashboard. Fills the page from config.json, plan.json and data/*.json.
    No dependencies. Every element it writes into carries data-bind="<name>".
+   View-only for visitors; the owner's browser (a saved GitHub key, see "owner mode") also gets the targets, link
+   clicks, X API spend and the controls that change things. Elements marked data-owner show only in owner mode.
    The numbers are worked out exactly as in the first dashboard (compute, KPIS, series stats, summary). */
 (() => {
   'use strict';
@@ -63,6 +65,7 @@
   };
 
   let S = null;
+  let owner = false; // true on the owner's browser: its GitHub key can change the repository (see checkOwner)
   let current = null;
   let list = [];
   const app = { page: 0, sort: { key: 'date', dir: 'desc' }, selected: null };
@@ -91,11 +94,16 @@
   }
 
   /* ---------- data ---------- */
+  // Visitors read the files this site publishes, and never plan.json. In owner mode (checkOwner) every file is read
+  // straight from the repository through the GitHub API instead: fresher, and it includes what the public copy of the
+  // site leaves out (plan.json with the targets, link clicks, X API spend).
   async function load(bust = false) {
     const q = bust ? `?t=${Date.now()}` : '';
-    const get = (p) => fetch(p + q, { cache: bust ? 'no-store' : 'no-cache' }).then((r) => { if (!r.ok) throw new Error(`${p} → HTTP ${r.status}`); return r.json(); });
+    const site = (p) => fetch(p + q, { cache: bust ? 'no-store' : 'no-cache' }).then((r) => { if (!r.ok) throw new Error(`${p} → HTTP ${r.status}`); return r.json(); });
+    const get = owner ? (p) => ghFile(p).catch(() => site(p)) : site;
+    const noPlan = { quarters: {}, calendar: [] };
     const [config, plan, posts, history, mentions, meta, buildersFile, previews] = await Promise.all([
-      get('config.json'), get('plan.json').catch(() => ({ quarters: {}, calendar: [] })),
+      get('config.json'), owner ? ghFile('plan.json').catch(() => noPlan) : noPlan,
       get('data/posts.json'), get('data/history.json'), get('data/mentions.json'), get('data/meta.json'),
       get('builders.json').catch(() => null),
       get('data/builder-previews.json').catch(() => ({})),
@@ -423,7 +431,7 @@
       return h('div', { class: 'db-tile' },
         h('p', { class: 'db-tile__k', text: k.label }),
         h('p', { class: 'db-tile__v', text: v == null ? '—' : k.fmt(v) }),
-        chip(st),
+        owner ? chip(st) : null, // the status compares against targets, which only the owner sees
         kpiPicture(k, c),
         h('p', { class: 'db-tile__m', text: k.net ? k.meta(c, tt) : tt != null ? `Target ${tt}` : k.meta(c) }));
     }));
@@ -693,7 +701,7 @@
         onclick: () => pick(p), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(p); } },
       },
       h('span', { class: 'd', text: dShort.format(p.t) }),
-      h('span', { class: 't' }, snippet(p.text, 220), p.series ? h('span', { class: 'mx-pill mx-pill--series', text: S.seriesById.get(p.series)?.label || p.series }) : null, p.class?.review ? h('span', { class: 'flag', text: ' · needs review' }) : null),
+      h('span', { class: 't' }, snippet(p.text, 220), p.series ? h('span', { class: 'mx-pill mx-pill--series', text: S.seriesById.get(p.series)?.label || p.series }) : null, owner && p.class?.review ? h('span', { class: 'flag', text: ' · needs review' }) : null),
       h('span', { class: 'k', text: KIND[p.kind] || p.kind }),
       h('span', { class: 'th', title: themeText(p), text: themeText(p) + (p.class?.local && focusOn() ? ' · ' + focusShort() : '') }),
       h('span', { class: 'n', text: impr == null ? '—' : nf.format(impr) }),
@@ -713,12 +721,12 @@
     open.replaceChildren(
       h('div', { class: 'app-open__meta' }, h('span', { class: 'mx-tag', text: dLong.format(p.t) }), h('span', { class: 'mx-tag', text: KIND[p.kind] || p.kind }),
         p.series ? h('span', { class: 'mx-tag', text: S.seriesById.get(p.series)?.label }) : null, p.class?.local && focusOn() ? h('span', { class: 'mx-tag', text: focusLabel() }) : null,
-        p.class?.review ? h('span', { class: 'mx-tag', text: 'Needs review' }) : null),
+        owner && p.class?.review ? h('span', { class: 'mx-tag', text: 'Needs review' }) : null),
       h('p', { class: 'app-open__text', text: p.text }),
       h('dl', { class: 'app-open__stats' }, stat('Impressions', impr == null ? '—' : nf.format(impr)), stat('Engagement', impr ? pct(eng(p) / impr) : '—'),
         stat('Likes', nf.format(p.metrics.likes || 0)), stat('Replies', nf.format(p.metrics.replies || 0)), stat('Reposts', nf.format(p.metrics.reposts || 0)),
         stat('Quotes', nf.format(p.metrics.quotes || 0)), stat('Bookmarks', p.metrics.bookmarks == null ? '—' : nf.format(p.metrics.bookmarks)),
-        stat('Link clicks', p.private?.link_clicks == null ? '—' : nf.format(p.private.link_clicks))),
+        owner ? stat('Link clicks', p.private?.link_clicks == null ? '—' : nf.format(p.private.link_clicks)) : null),
       h('p', { class: 'app-open__why', text: `Matched: ${(p.class?.reasons || []).join(', ') || 'manual include'}. Themes: ${themeText(p) || '—'}.` }),
       h('a', { class: 'app-open__link', href: p.url, target: '_blank', rel: 'noopener', text: 'Open the post on X →' }));
   }
@@ -803,7 +811,7 @@
     const toggle = $b('mq-toggle');
     if (!all.length) {
       toggle.hidden = true;
-      el.replaceChildren(h('div', { class: 'db-builders__empty' }, h('b', { text: 'No builders listed yet. ' }), 'Use Add a builder to showcase someone you have helped get started.'));
+      el.replaceChildren(h('div', { class: 'db-builders__empty' }, h('b', { text: 'No builders listed yet.' }), owner ? ' Use Add a builder to showcase someone you have helped get started.' : null));
       return;
     }
     // one tile per builder, never repeated to fill space; the line moves only when they don't all fit across the strip
@@ -875,10 +883,14 @@
     dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // a click on the backdrop closes it
   }
 
-  /* ---------- GitHub: the form commits builders.json itself, with a key kept only in this browser ---------- */
-  // The key is a fine-grained GitHub token limited to this one repository (Contents: read and write). It is stored in
-  // localStorage, sent only to api.github.com, and never written into the repo. Without it the form can't save.
+  /* ---------- owner mode and GitHub ---------- */
+  // The owner signs in once per browser with a fine-grained GitHub key limited to the dashboard's repository
+  // (Contents: read and write). It is stored in localStorage, sent only to api.github.com, and never written into a
+  // file. With it the page reads every file from the repository (a private one too) and the Add a builder form
+  // commits builders.json itself. Everyone else gets the view-only page: no targets, link clicks, spend or controls.
   const GH_KEY = 'mx-gh-token';
+  let bootRepo = ''; // config.json "repo", read before the data loads
+  let ownerNote = ''; // why a saved key didn't give owner mode, shown in the footer
   // owner/repo: from config.json, else read from the GitHub Pages address (owner.github.io/repo/)
   const repoGuess = () => {
     const host = location.hostname.toLowerCase();
@@ -886,8 +898,9 @@
     const first = location.pathname.split('/').filter(Boolean)[0];
     return `${host.slice(0, -'.github.io'.length)}/${first || host}`;
   };
-  const repoName = () => (S && S.config && S.config.repo) || repoGuess();
+  const repoName = () => (S && S.config && S.config.repo) || bootRepo || repoGuess();
   const ghToken = () => store.get(GH_KEY) || '';
+  const forgetKey = () => { try { localStorage.removeItem(GH_KEY); } catch { /* storage unavailable */ } };
   const b64ToText = (b64) => new TextDecoder().decode(Uint8Array.from(atob(String(b64).replace(/\s+/g, '')), (ch) => ch.charCodeAt(0)));
   const textToB64 = (txt) => {
     const bytes = new TextEncoder().encode(txt);
@@ -903,8 +916,78 @@
     if (!r.ok) throw Object.assign(new Error(body.message || `HTTP ${r.status}`), { status: r.status });
     return body;
   }
-  const ghProblem = (e) => (e.status === 401 ? 'GitHub did not accept the key. It may have expired: make a new one and paste it below.'
-    : e.status === 403 || e.status === 404 ? `The key can't change files in ${repoName()}. Make sure it has access to that repository with Contents set to Read and write.`
+  // one file from the repository through the API, parsed as JSON (works on a private repository)
+  async function ghFile(path) {
+    const r = await fetch(`https://api.github.com/repos/${repoName()}/contents/${path}?ref=main`, {
+      headers: { Accept: 'application/vnd.github.raw+json', Authorization: `Bearer ${ghToken()}`, 'X-GitHub-Api-Version': '2022-11-28' }, cache: 'no-cache',
+    });
+    if (!r.ok) throw Object.assign(new Error(`${path} → GitHub HTTP ${r.status}`), { status: r.status });
+    return r.json();
+  }
+  const canWrite = (repo) => !repo.permissions || !!(repo.permissions.push || repo.permissions.admin);
+  // owner mode: this browser holds a key that GitHub accepts for changing the repository
+  async function checkOwner() {
+    owner = false;
+    ownerNote = '';
+    const token = ghToken();
+    if (token) {
+      try {
+        if (!S) bootRepo = (await fetch('config.json', { cache: 'no-cache' }).then((r) => r.json()).catch(() => ({}))).repo || '';
+        if (repoName()) owner = canWrite(await gh('', token));
+        if (!owner) ownerNote = `Your saved GitHub key can't change ${repoName()}, so this is the public view.`;
+      } catch (e) {
+        if (e.status === 401) { forgetKey(); ownerNote = 'GitHub no longer accepts your saved key (it may have expired), so this is the public view.'; }
+        else ownerNote = e.status === 403 || e.status === 404 ? `Your saved GitHub key can't open ${repoName()}, so this is the public view.` : "GitHub didn't answer, so this is the public view. Reload to try again.";
+      }
+    }
+    document.documentElement.classList.toggle('is-owner', owner);
+    return owner;
+  }
+  function openOwner() {
+    const dlg = $b('owner-dialog');
+    const form = $b('owner-form');
+    const [who, repo] = repoName().split('/');
+    form.reset();
+    $b('owner-error').textContent = '';
+    $b('owner-repo').textContent = repo || "this dashboard's repository";
+    $b('owner-new').href = 'https://github.com/settings/personal-access-tokens/new?' + new URLSearchParams({
+      name: 'Leader dashboard owner', description: `Lets the dashboard show its owner-only numbers and save builders in ${repoName()}.`,
+      target_name: who || '', expires_in: '366', contents: 'write',
+    });
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    form.elements.ghtoken.focus();
+  }
+  const signOut = () => { forgetKey(); location.reload(); };
+  function setupOwner() {
+    const dlg = $b('owner-dialog');
+    const form = $b('owner-form');
+    const err = $b('owner-error');
+    const go = $b('owner-go');
+    $b('owner-close').addEventListener('click', () => (dlg.close ? dlg.close() : dlg.removeAttribute('open')));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (go.disabled) return;
+      const token = String(form.elements.ghtoken.value || '').replace(/\s+/g, '');
+      err.textContent = '';
+      if (!/^[A-Za-z0-9_]{20,255}$/.test(token)) { err.textContent = "That GitHub key doesn't look right. Copy it again from GitHub."; form.elements.ghtoken.focus(); return; }
+      if (!repoName()) { err.textContent = 'This copy has no repository set ("repo" in config.json), so there is nothing to sign in to.'; return; }
+      go.disabled = true;
+      go.textContent = 'Checking…';
+      try {
+        if (!canWrite(await gh('', token))) throw Object.assign(new Error('read only'), { status: 403 });
+        store.set(GH_KEY, token); // kept only once GitHub has accepted it
+        location.reload(); // start again in owner mode
+      } catch (e2) {
+        err.textContent = e2.status === 401 ? 'GitHub did not accept that key. Make a new one and paste it here.'
+          : e2.status === 403 || e2.status === 404 ? `That key can't change ${repoName()}. Make a new one with access to that repository and Contents set to Read and write.`
+          : `Could not reach GitHub (${e2.message}). Check the connection and try again.`;
+        go.disabled = false;
+        go.textContent = 'Sign in';
+      }
+    });
+  }
+  const ghProblem = (e) => (e.status === 401 ? 'GitHub did not accept your key. It may have expired: reload the page and use Owner sign-in at the bottom to add a new one.'
+    : e.status === 403 || e.status === 404 ? `Your key can't change files in ${repoName()}. Sign in again with a key that has Contents set to Read and write for that repository.`
     : e.status === 409 || e.status === 422 ? 'builders.json changed on GitHub at the same moment. Press Add the builder again.'
     : e.status === 0 ? e.message
     : `Could not reach GitHub (${e.message}). Check the connection and try again.`);
@@ -931,16 +1014,8 @@
     }
   }
   const setBuilders = (file) => { S.buildersFile = file; S.builders = normBuilders(file); renderBuilders(compute(current)); };
-  // GitHub Pages takes about a minute to publish a commit; on the browser that holds the key, read the list from GitHub itself
-  async function syncBuilders() {
-    const token = ghToken();
-    if (!token || !S) return;
-    try {
-      const { file } = await readBuildersFile(token);
-      if (JSON.stringify(file.builders || []) !== JSON.stringify(S.buildersFile?.builders || [])) setBuilders(file);
-    } catch { /* the published copy stays on screen */ }
-  }
-  // the website picture arrives with the Builder previews workflow's commit, a minute or two after the builder
+  // the website picture arrives with the Builder previews workflow's commit, a minute or two after the builder;
+  // the owner's page reads it from the repository, before the public site has it
   let picWatch = null;
   function watchPicture(name, site) {
     if (picWatch) clearInterval(picWatch);
@@ -950,7 +1025,7 @@
     const tick = async () => {
       if (Date.now() > until) { clearInterval(picWatch); picWatch = null; status.textContent = `${name} is added. The picture of their website isn't published yet: it shows the next time you open the page (or see Builder previews under Actions on GitHub).`; return; }
       try {
-        const pv = await fetch(`data/builder-previews.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.json());
+        const pv = owner ? await ghFile('data/builder-previews.json') : await fetch(`data/builder-previews.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.json());
         const e = pv && pv[key];
         if (!e || e.url !== site) return;
         clearInterval(picWatch);
@@ -968,24 +1043,10 @@
     const form = $b('builder-form');
     const err = $b('builder-error');
     const save = $b('builder-save');
-    const setup = $b('gh-setup');
-    const ok = $b('gh-ok');
     const close = () => (dlg.close ? dlg.close() : dlg.removeAttribute('open'));
-    const showGh = () => {
-      const connected = !!ghToken();
-      setup.hidden = connected;
-      ok.hidden = !connected;
-      const [owner, repo] = repoName().split('/');
-      $b('gh-repo').textContent = repo;
-      $b('gh-new').href = 'https://github.com/settings/personal-access-tokens/new?' + new URLSearchParams({
-        name: 'Leader dashboard builders', description: `Lets the dashboard's Add a builder form commit builders.json in ${repoName()}.`,
-        target_name: owner, expires_in: '366', contents: 'write',
-      });
-    };
-    const reset = () => { form.reset(); form.elements.since.value = dayKey(new Date()); err.textContent = ''; save.disabled = false; save.textContent = 'Add the builder'; showGh(); };
+    const reset = () => { form.reset(); form.elements.since.value = dayKey(new Date()); err.textContent = ''; save.disabled = false; save.textContent = 'Add the builder'; };
     $b('builder-add').addEventListener('click', () => { reset(); if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', ''); form.elements.name.focus(); });
     $b('builder-close').addEventListener('click', close);
-    $b('gh-forget').addEventListener('click', () => { try { localStorage.removeItem(GH_KEY); } catch { /* storage unavailable */ } err.textContent = ''; showGh(); form.elements.ghtoken.focus(); });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!S || save.disabled) return;
@@ -1012,10 +1073,8 @@
         if (!d) return fail("That Discord invite link or username doesn't look right.", 'discord');
         links.discord = d;
       }
-      const saved = ghToken();
-      const token = saved || v('ghtoken').replace(/\s+/g, '');
-      if (!token) return fail('Connect GitHub first: make the key (step 1) and paste it in the GitHub key box.', 'ghtoken');
-      if (!/^[A-Za-z0-9_]{20,255}$/.test(token)) return fail("That GitHub key doesn't look right. Copy it again from GitHub.", 'ghtoken');
+      const token = ghToken();
+      if (!owner || !token) return fail('Sign in as the owner first: Owner sign-in is at the bottom of the page.');
 
       const entry = { name: v('name') };
       if (v('since')) entry.since = v('since');
@@ -1028,15 +1087,14 @@
       save.textContent = 'Adding…';
       try {
         const res = await commitBuilder(entry, token);
-        if (!saved) store.set(GH_KEY, token); // keep the key only once GitHub has accepted it
         setBuilders(res.file);
         close();
         const site = safeUrl(links.website);
-        $b('builders-status').textContent = `${res.updated ? 'Updated' : 'Added'} ${entry.name}. Everyone sees it in about a minute${site ? ', and the picture of their website follows a minute or two later.' : '.'}`;
+        $b('builders-status').textContent = `${res.updated ? 'Updated' : 'Added'} ${entry.name}. Visitors see it in a minute or two${site ? ', and the picture of their website follows a few minutes later.' : '.'}`;
         if (site) watchPicture(entry.name, site);
       } catch (e2) {
-        if (saved && e2.status === 401) { try { localStorage.removeItem(GH_KEY); } catch { /* storage unavailable */ } showGh(); }
-        fail(ghProblem(e2), !saved || e2.status === 401 ? 'ghtoken' : null);
+        if (e2.status === 401) forgetKey();
+        fail(ghProblem(e2));
       } finally {
         save.disabled = false;
         save.textContent = 'Add the builder';
@@ -1063,7 +1121,6 @@
     renderChrome();
     renderSeries();
     render();
-    syncBuilders();
     return (S.meta.lastRun?.at || '') !== before;
   }
   const runStamp = () => (S.meta.lastRun?.at ? zoneStamp(new Date(S.meta.lastRun.at)) : 'not yet');
@@ -1078,7 +1135,7 @@
     if (Date.now() > watch.until) { stopWatch('No new data after 15 minutes. Check the run under Actions on GitHub, then press Reload the latest data.'); return; }
     watch.busy = true;
     try {
-      const m = await fetch(`data/meta.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.json());
+      const m = owner ? await ghFile('data/meta.json') : await fetch(`data/meta.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.json());
       if ((m.lastRun?.at || '') !== watch.since) { await reloadData(); stopWatch(`New data loaded: refreshed ${runStamp()}.`); }
     } catch { /* try again on the next check */ } finally { if (watch) watch.busy = false; }
   }
@@ -1119,7 +1176,8 @@
     sub.replaceChildren();
     if (handle && !m.demo) sub.append(h('a', { href: `https://x.com/${handle}`, target: '_blank', rel: 'noopener', text: '@' + handle }), ' · ');
     const profile = S.config.profile || {};
-    sub.append(`Midnight-related posts and X KPIs, refreshed daily from the X API and tracked against ${profile.framework || 'the targets in plan.json'}.`);
+    const against = profile.framework || (owner ? 'the targets in plan.json' : '');
+    sub.append(`Midnight-related posts and X KPIs, refreshed daily from the X API${against ? ` and tracked against ${against}` : ''}.`);
     $b('brand-sub').textContent = [profile.role, profile.area].filter(Boolean).join(' · ') || 'KPI dashboard';
     const [hh, mm] = String(S.config.refreshUtc || '04:15').split(':').map(Number);
     const daily = new Date(Date.UTC(2026, 0, 15, hh || 0, mm || 0));
@@ -1131,7 +1189,7 @@
     $$b('refresh-short').forEach((el) => { el.textContent = at ? zoneStamp(at) : 'not yet'; });
     const repoUrl = `https://github.com/${repoName()}`;
     $b('fetch-x').href = `${repoUrl}/actions/workflows/refresh.yml`;
-    $b('fetch-cost').textContent = m.lastRun?.estCostUSD != null ? `The last run (${m.lastRun.mode}) cost about $${Number(m.lastRun.estCostUSD).toFixed(2)} of X API credit.` : '';
+    $b('fetch-cost').textContent = owner && m.lastRun?.estCostUSD != null ? `The last run (${m.lastRun.mode}) cost about $${Number(m.lastRun.estCostUSD).toFixed(2)} of X API credit.` : '';
 
     const banner = $b('banner');
     banner.replaceChildren();
@@ -1141,7 +1199,7 @@
       banner.hidden = false;
     } else if (at && Date.now() - at > 3 * 864e5) {
       const days = Math.floor((Date.now() - at) / 864e5);
-      banner.append(h('strong', { text: `Data is ${days} days old. ` }), 'Check the "Refresh X data" job under the repo\'s Actions tab.');
+      banner.append(h('strong', { text: `Data is ${days} days old.` }), owner ? ' Check the "Refresh X data" job under the repo\'s Actions tab.' : null);
       banner.hidden = false;
     }
 
@@ -1149,10 +1207,13 @@
     const spend = m.costByMonth?.[month];
     const repo = repoName();
     $b('foot').replaceChildren(
-      h('span', { text: at ? `Last refresh ${zoneStamp(at, true)} (${m.lastRun.mode}).${spend != null ? ` Estimated X API spend this month: $${spend.toFixed(2)}.` : ''}` : 'Not refreshed yet.' }),
+      h('span', { text: at ? `Last refresh ${zoneStamp(at, true)}${owner ? ` (${m.lastRun.mode})` : ''}.${owner && spend != null ? ` Estimated X API spend this month: $${spend.toFixed(2)}.` : ''}` : 'Not refreshed yet.' }),
       h('span', { text: `Data starts ${dLong.format(S.dataStart)}. ${nf.format(S.posts.length)} Midnight posts tracked, out of ${nf.format(S.posts.length + S.other.length)} posts seen in total. Engagement rate = (likes + replies + reposts + quotes) ÷ impressions.` }),
       h('span', null, `Community planning tool${profile.role ? ` by ${/^[aeiou]/i.test(profile.role) ? 'an' : 'a'} ${profile.role}` : ''}. Not an official Midnight Network or Midnight Foundation publication. Midnight and the Midnight logo are trademarks of their owners.`,
-        repo ? h('span', null, ' · ', h('a', { href: `https://github.com/${repo}/edit/main/plan.json`, target: '_blank', rel: 'noopener', text: 'Edit plan.json' }), ' · ', h('a', { href: `https://github.com/${repo}/edit/main/builders.json`, target: '_blank', rel: 'noopener', text: 'Edit builders.json' })) : null));
+        owner && repo ? h('span', null, ' · ', h('a', { href: `https://github.com/${repo}/edit/main/plan.json`, target: '_blank', rel: 'noopener', text: 'Edit plan.json' }), ' · ', h('a', { href: `https://github.com/${repo}/edit/main/builders.json`, target: '_blank', rel: 'noopener', text: 'Edit builders.json' })) : null),
+      owner
+        ? h('span', { class: 'db-foot__owner' }, 'Signed in as the owner on this browser. ', h('button', { type: 'button', class: 'db-textbtn', onclick: signOut, text: 'Sign out' }))
+        : h('span', { class: 'db-foot__owner' }, ownerNote ? `${ownerNote} ` : '', h('button', { type: 'button', class: 'db-textbtn', onclick: openOwner, text: 'Owner sign-in' })));
   }
 
   /** Days into a calendar period, and a note on periods that start before the stored data does. */
@@ -1184,9 +1245,10 @@
     const update = () => {
       raf = 0;
       const line = (document.querySelector('.db-top')?.offsetHeight || 60) + 48;
-      let cur = ids[0];
-      for (const id of ids) { const sec = document.getElementById(id); if (sec && sec.getBoundingClientRect().top <= line) cur = id; }
-      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = ids[ids.length - 1];
+      const shown = ids.filter((id) => document.getElementById(id)?.getClientRects().length); // Plan & report is hidden from visitors
+      let cur = shown[0];
+      for (const id of shown) { if (document.getElementById(id).getBoundingClientRect().top <= line) cur = id; }
+      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = shown[shown.length - 1];
       mark(cur);
     };
     addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(update); }, { passive: true });
@@ -1202,7 +1264,7 @@
     renderTrends(c);
     renderTop(c);
     renderBuilders(c);
-    renderPlan(c);
+    if (owner) renderPlan(c);
     renderApp(c);
   }
 
@@ -1211,7 +1273,9 @@
     setupRefresh();
     setupBuilderForm();
     setupBuilderStrip();
+    setupOwner();
     try {
+      await checkOwner();
       S = await load();
     } catch (err) {
       $b('sub').textContent = `Could not load data (${err.message}). If you opened index.html straight from disk, serve the folder over HTTP instead (e.g. python -m http.server).`;
@@ -1235,7 +1299,6 @@
     renderChrome();
     renderSeries();
     render();
-    syncBuilders();
     $b('copy').addEventListener('click', async () => {
       const text = summaryText(compute(current));
       const status = $b('copy-status');

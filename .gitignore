@@ -11,3 +11,7 @@ Thumbs.db
 # taste-skill working files
 .taste-skill/
 shots/
+
+# the public copy built by scripts/publish.mjs (in CI)
+_public/
+_site/

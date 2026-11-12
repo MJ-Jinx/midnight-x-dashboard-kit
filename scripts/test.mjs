@@ -3,11 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import { existsSync } from 'node:fs';
 import { oauthHeader } from './lib/oauth1.mjs';
 import { compileConfig, classify } from './lib/classify.mjs';
 import { normalizeApiPost, mergePosts, detectKind, ROOT } from './lib/posts.mjs';
 import { run } from './fetch-x.mjs';
 import { parseYtd, normalizeArchiveTweet, queueArchive, noteTextIndex } from './import-archive.mjs';
+import { publicPosts, publicMeta, build, leaks } from './publish.mjs';
 
 // The real keyword lists, plus a fixed focus area and fixed series, so the tests pass whatever this copy's config.json sets.
 const base = JSON.parse(await fs.readFile(path.join(ROOT, 'config.json'), 'utf8'));
@@ -258,4 +261,25 @@ test('archive parsing', () => {
   assert.equal(p.refs[0].author, 'MidnightNtwrk');
   assert.equal(p.metrics.reposts, 3);
   assert.equal(p.created_at, '2025-10-01T10:00:00.000Z');
+});
+
+test('public copy: drops targets, link clicks and spend, keeps what the page shows', async () => {
+  const posts = { posts: [{ id: '1', text: 'a', metrics: { impressions: 5 }, private: { link_clicks: 2, profile_clicks: 1 } }], other: [{ id: '2', kind: 'reply', private: { engagements: 3 } }] };
+  const pp = publicPosts(posts);
+  assert.deepEqual(pp.posts[0], { id: '1', text: 'a', metrics: { impressions: 5 } });
+  assert.deepEqual(pp.other[0], { id: '2', kind: 'reply' });
+  assert.ok(posts.posts[0].private, 'the original is left alone');
+  const meta = { demo: false, handle: 'h', user: { id: '9' }, paramSet: 'x', lastRun: { at: '2026-11-11T00:00:00Z', mode: 'daily', estCostUSD: 0.13, postsRead: 76 }, costByMonth: { '2026-11': 4.36 }, archiveImport: {} };
+  assert.deepEqual(publicMeta(meta), { demo: false, handle: 'h', user: { id: '9' }, lastRun: { at: '2026-11-11T00:00:00Z', mode: 'daily' } });
+  // the whole build from this repository passes its own leak check, and leaves plan.json and the scripts behind
+  const out = await fs.mkdtemp(path.join(os.tmpdir(), 'mx-public-'));
+  try {
+    assert.deepEqual(build(out), []);
+    for (const gone of ['plan.json', 'data/pending-archive.json', 'scripts', '.github', 'kit']) assert.equal(existsSync(path.join(out, gone)), false, gone);
+    for (const kept of ['index.html', 'config.json', 'builders.json', 'data/posts.json', 'assets/app.js']) assert.ok(existsSync(path.join(out, kept)), kept);
+    await fs.writeFile(path.join(out, 'plan.json'), '{}');
+    assert.deepEqual(leaks(out), ['plan.json is not on the public list']);
+  } finally {
+    await fs.rm(out, { recursive: true, force: true });
+  }
 });
