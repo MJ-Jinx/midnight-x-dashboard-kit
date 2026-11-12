@@ -114,6 +114,7 @@ jobs:
           FILES: ${{ steps.update.outputs.files }}
           WORKFLOWS: ${{ steps.update.outputs.workflows }}
           NEW_SETTINGS: ${{ steps.update.outputs.settings }}
+          SETUP: ${{ steps.update.outputs.setup }}
           HELD: ${{ steps.save.outputs.held }}
           CHANGED: ${{ steps.save.outputs.changed }}
         run: |
@@ -129,9 +130,13 @@ jobs:
               echo
               echo "Installing kit version \`${SHA:0:7}\` would change **${FILES:-0} files**${WORKFLOWS:+, including the workflow files $WORKFLOWS}${NEW_SETTINGS:+, and add the settings $NEW_SETTINGS to config.json}. Run it again with **update** to install it."
             elif [ "$CHANGED" = "true" ]; then
+              applied=$(( ${FILES:-0} - $(printf '%s' "$HELD" | wc -w) ))
+              [ "$applied" -lt 0 ] && applied=0
+              [ "$applied" = 1 ] && word=file || word=files
+              [ "$SETUP" = "true" ] && answers=", and your setup answers were put back" || answers=""
               echo "## Updated to kit version \`${SHA:0:7}\`"
               echo
-              echo "${FILES:-0} files changed. Your settings, targets, builders, events and numbers were kept, and your setup answers were put back. The public site updates in a minute or two."
+              echo "$applied $word changed. Your settings, targets, builders, events and numbers were kept$answers. The public site updates in a minute or two."
             else
               echo "## Already up to date"
               echo
